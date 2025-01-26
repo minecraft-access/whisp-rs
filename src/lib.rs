@@ -6,15 +6,15 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicI32,Ordering};
 use std::sync::Mutex;
 use jni::JNIEnv;
-use jni::objects::{JByteBuffer,JClass,JObjectArray,JString};
+use jni::objects::{JByteArray,JClass,JObjectArray,JString};
 use jni::sys::jint;
 pub struct SpeechResult {
-  pub pcm: Vec<i16>,
+  pub pcm: Vec<u8>,
   pub sample_rate: i32
 }
 lazy_static! {
   static ref SAMPLE_RATE: AtomicI32 = AtomicI32::new(22050);
-  static ref BUFFER: Mutex<Cell<Vec<i16>>> = Mutex::new(Cell::new(Vec::default()));
+  static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::default()));
 }
 pub fn handle_espeak_error(error: espeak_ERROR, message: &str) {
   match error {
@@ -47,8 +47,8 @@ pub fn speak(text: &str) -> SpeechResult {
 }
 unsafe extern "C" fn synth_callback(wav: *mut c_short, sample_count: c_int, _events: *mut espeak_EVENT) -> c_int {
   if !wav.is_null() {
-    let wav_slice = std::slice::from_raw_parts_mut(wav, sample_count as usize);
-    let mut wav_vec = wav_slice.into_iter().map(|sample| sample.clone() as i16).collect::<Vec<i16>>();
+    let wav_slice = std::slice::from_raw_parts_mut(wav as *mut c_char, 2*sample_count as usize);
+    let mut wav_vec = wav_slice.into_iter().map(|byte| byte.clone() as u8).collect::<Vec<u8>>();
     let mut buffer = BUFFER.lock().unwrap().take();
     buffer.append(&mut wav_vec);
     BUFFER.lock().unwrap().set(buffer);
@@ -88,10 +88,11 @@ pub fn set_voice(name: &str) {
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
   initialize();
 }
-#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, text: JString<'local>) -> JByteBuffer<'local> {
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, text: JString<'local>) -> JByteArray<'local> {
   let text: String = env.get_string(&text).expect("Failed to get Java string").into();
-  let mut result: SpeechResult = speak(&text);
-  let buffer = unsafe { env.new_direct_byte_buffer(result.pcm.as_mut_ptr() as *mut u8, result.pcm.len()*2).expect("Failed to create byte buffer") };
+  let result: SpeechResult = speak(&text);
+  let pcm = result.pcm;
+  let buffer = env.byte_array_from_slice(&pcm).expect("Failed to create byte buffer");
   buffer
 }
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_setRate<'local>(_env: JNIEnv<'local>, _class: JClass<'local>, rate: jint) {
