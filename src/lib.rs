@@ -1,12 +1,12 @@
 #![allow(non_upper_case_globals)] use espeakng_sys::*;
 use std::os::raw::{c_char,c_short,c_int};
-use std::ffi::{c_void,CString};
+use std::ffi::{c_void,CStr,CString};
 use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::sync::atomic::{AtomicI32,Ordering};
 use std::sync::Mutex;
 use jni::JNIEnv;
-use jni::objects::{JByteBuffer,JClass, JString};
+use jni::objects::{JByteBuffer,JClass,JObjectArray,JString};
 use jni::sys::jint;
 pub struct SpeechResult {
   pub pcm: Vec<i16>,
@@ -67,6 +67,20 @@ pub fn set_pitch(pitch: i32) {
 pub fn set_pitch_range(pitch_range: i32) {
   handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRANGE, pitch_range, 0) }, "Error setting eSpeak speech pitch range");
 }
+pub fn list_voices(language: &str) -> Vec<String> {
+  let language_cstr = CString::new(language).expect("Failed to convert text to CString");
+  let mut voice_spec = espeak_VOICE { name: std::ptr::null(), languages: language_cstr.as_ptr(), identifier: std::ptr::null(), gender: 0, age: 0, variant: 0, xx1: 0, score: 0, spare: std::ptr::null_mut() };
+  let voices = unsafe { espeak_ListVoices(&mut voice_spec) };
+  let mut voices_copy = voices.clone();
+  let mut count: usize = 0;
+  while unsafe { !(*voices_copy).is_null() } {
+    count+=1;
+    voices_copy = unsafe { voices_copy.add(1) };
+  }
+  let voices_slice = unsafe { std::slice::from_raw_parts(voices, count) };
+  let voice_names = unsafe { voices_slice.into_iter().map(|voice| CStr::from_ptr((**voice).name).to_str().unwrap().to_owned()).collect::<Vec<String>>() };
+  voice_names
+}
 pub fn set_voice(name: &str) {
   let name_cstr = CString::new(name).expect("Failed to convert text to CString");
   handle_espeak_error(unsafe { espeak_SetVoiceByName(name_cstr.as_ptr()) }, "Error setting eSpeak speech pitch range");
@@ -91,6 +105,20 @@ pub fn set_voice(name: &str) {
 }
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_setPitchRange<'local>(_env: JNIEnv<'local>, _class: JClass<'local>, pitch_range: jint) {
   set_pitch_range(pitch_range)
+}
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_listVoices<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, language: JString<'local>) -> JObjectArray<'local> {
+  let language: String = env.get_string(&language).expect("Failed to get Java string").into();
+  let names = list_voices(&language);
+  let string_class = env.find_class("java/lang/String").expect("Failed to get class: java.lang.string");
+  let empty_string = env.new_string("").expect("Failed to create empty string");
+  let array = env.new_object_array(names.len().try_into().unwrap(), string_class, empty_string).expect("Failed to create Java array");
+  let mut index: usize = 0;
+  while index<names.len() {
+    let name_jstring = env.new_string(&names[index]).expect("Failed to create Java string");
+    env.set_object_array_element(&array, index.try_into().unwrap(), name_jstring).expect("Failed to add string to array");
+    index+=1
+  }
+  array
 }
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_setVoice<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, name: JString<'local>) {
   let name: String = env.get_string(&name).expect("Failed to get Java string").into();
