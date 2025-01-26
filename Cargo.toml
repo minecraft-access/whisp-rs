@@ -5,4 +5,8 @@ edition = "2021"
 
 [dependencies]
 espeakng-sys = "0.2.0"
+jni = "0.21.1"
 lazy_static = "1.5.0"
+
+[lib]
+crate-type = ["cdylib"]

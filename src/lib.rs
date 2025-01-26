@@ -5,6 +5,9 @@ use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::sync::atomic::{AtomicI32,Ordering};
 use std::sync::Mutex;
+use jni::JNIEnv;
+use jni::objects::{JClass, JString};
+use jni::objects::JByteBuffer;
 pub struct SpeechResult {
   pub pcm: Vec<i16>,
   pub sample_rate: i32
@@ -50,9 +53,12 @@ unsafe extern "C" fn synth_callback(wav: *mut c_short, sample_count: c_int, _eve
   }
   0
 }
-fn main() {
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_Speech_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
   initialize();
-  let result = speak("This is a test.");
-  let slice_u8: &[u8] = unsafe { std::slice::from_raw_parts(result.pcm.as_ptr() as *const u8, result.pcm.len()*2) };
-  std::fs::write("test.wav", slice_u8);
+}
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_Speech_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, text: JString<'local>) -> JByteBuffer<'local> {
+  let text: String = env.get_string(&text).expect("Failed to get Java string").into();
+  let mut result: SpeechResult = speak(&text);
+  let buffer = unsafe { env.new_direct_byte_buffer(result.pcm.as_mut_ptr() as *mut u8, result.pcm.len()).expect("Failed to create byte buffer") };
+  buffer
 }
