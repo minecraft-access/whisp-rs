@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 espeakng-sys = "0.2.0"
+lazy_static = "1.5.0"

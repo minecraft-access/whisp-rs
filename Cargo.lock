@@ -16,6 +16,7 @@ name = "audio-navigation-tts"
 version = "0.1.0"
 dependencies = [
  "espeakng-sys",
+ "lazy_static",
 ]
 
 [[package]]
