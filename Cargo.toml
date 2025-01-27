@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-espeakng-sys = { git = "https://github.com/emassey0135/espeakng-sys.git", version = "0.2.0" }
+espeakng-sys = { git = "https://github.com/emassey0135/espeakng-sys.git", version = "0.3.0" }
 jni = "0.21.1"
 lazy_static = "1.5.0"
 
