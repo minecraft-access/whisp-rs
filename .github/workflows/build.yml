@@ -7,39 +7,39 @@ jobs:
       matrix:
         platform:
           - os-name: Linux-x86_64
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             output-file: libaudio_navigation_tts.so
           - os-name: Linux-aarch64
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             output-file: libaudio_navigation_tts.so
           - os-name: Windows-x86_64
-            runs-on: windows-latest
+            runs-on: windows-2025
             target: x86_64-pc-windows-msvc
             output-file: audio_navigation_tts.dll
           - os-name: Windows-aarch64
-            runs-on: windows-latest
+            runs-on: windows-2025
             target: aarch64-pc-windows-msvc
             output-file: audio_navigation_tts.dll
           - os-name: macOS-x86_64
-            runs-on: macOS-latest
+            runs-on: macOS-13
             target: x86_64-apple-darwin
             output-file: libaudio_navigation_tts.dylib
           - os-name: macOS-aarch64
-            runs-on: macOS-latest
+            runs-on: macOS-15
             target: aarch64-apple-darwin
             output-file: libaudio_navigation_tts.dylib
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
-      - name: checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v1
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: "--locked --release"
-          strip: true
+      - name: Build library
+        run: "cargo build --release --target ${{ matrix.platform.target }}"
       - name: capture build artifacts
         uses: actions/upload-artifact@v4
         with:
