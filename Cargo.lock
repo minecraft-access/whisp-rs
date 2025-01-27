@@ -15,6 +15,7 @@ dependencies = [
 name = "audio-navigation-tts"
 version = "0.1.0"
 dependencies = [
+ "build-target",
  "espeakng-sys",
  "jni",
  "lazy_static",
