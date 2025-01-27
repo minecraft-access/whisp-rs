@@ -55,7 +55,7 @@ jobs:
         run: "cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.original-output-file }} target/${{ matrix.platform.target }}/release/${{ matrix.platform.output-file }}"
         shell: bash
       - name: Upload library for release
-        run: "gh release upload ${{ github.event.release.tag_name }} target/${{ matrix.platform.target }}/release/${{ matrix.platform.output-file }}
+        run: "gh release upload ${{ github.event.release.tag_name }} target/${{ matrix.platform.target }}/release/${{ matrix.platform.output-file }}"
         env:
           GITHUB_TOKEN: ${{ github.TOKEN }}
         shell: bash
