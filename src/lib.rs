@@ -22,10 +22,10 @@ pub fn handle_espeak_error(error: espeak_ERROR, message: &str) {
     _ => panic!("{}", message)
   }
 }
-pub fn initialize() {
+pub fn initialize(path: &str) {
   let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_RETRIEVAL;
-  let path: *const c_char = std::ptr::null();
-  SAMPLE_RATE.store(unsafe { espeak_Initialize(output, 0, path, 0) }, Ordering::Release);
+  let path_cstr = CString::new(path).expect("Failed to convert text to CString");
+  SAMPLE_RATE.store(unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0) }, Ordering::Release);
 }
 pub fn speak(text: &str) -> SpeechResult {
   unsafe {
@@ -85,8 +85,9 @@ pub fn set_voice(name: &str) {
   let name_cstr = CString::new(name).expect("Failed to convert text to CString");
   handle_espeak_error(unsafe { espeak_SetVoiceByName(name_cstr.as_ptr()) }, "Error setting eSpeak speech pitch range");
 }
-#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
-  initialize();
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_initialize<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, path: JString<'local>) {
+  let path: String = env.get_string(&path).expect("Failed to get Java string").into();
+  initialize(&path);
 }
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, text: JString<'local>) -> JByteArray<'local> {
   let text: String = env.get_string(&text).expect("Failed to get Java string").into();
