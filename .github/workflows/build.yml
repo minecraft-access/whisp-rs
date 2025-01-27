@@ -37,6 +37,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          cache: false
           target: ${{ matrix.platform.target }}
       - name: Build library
         run: "cargo build --release --target ${{ matrix.platform.target }}"
