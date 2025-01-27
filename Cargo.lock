@@ -45,6 +45,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f68f53c83ab957f72c32642f3868eec03eb974d1fb82e453128456482613d36"
 
 [[package]]
+name = "build-target"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "832133bbabbbaa9fbdba793456a2827627a7d2b8fb96032fa1e7666d7895832b"
+
+[[package]]
 name = "bytes"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -119,9 +125,10 @@ checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 [[package]]
 name = "espeakng-sys"
 version = "0.3.0"
-source = "git+https://github.com/emassey0135/espeakng-sys.git#ce74ee54dfcdf9e8068c80ed1e0170a514af5a1a"
+source = "git+https://github.com/emassey0135/espeakng-sys.git#02e64c5925002aa0ed3218821a1618450e238540"
 dependencies = [
  "bindgen",
+ "build-target",
  "cmake",
 ]
 
