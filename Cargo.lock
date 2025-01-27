@@ -126,7 +126,7 @@ checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 [[package]]
 name = "espeakng-sys"
 version = "0.3.0"
-source = "git+https://github.com/emassey0135/espeakng-sys.git#2ea4bfd5483422d519c67051936b259788f8c84d"
+source = "git+https://github.com/emassey0135/espeakng-sys.git#c0b17fa0cb53357a460f407d90a96a43e82911a6"
 dependencies = [
  "bindgen",
  "build-target",
