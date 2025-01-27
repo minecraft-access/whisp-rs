@@ -41,15 +41,8 @@ jobs:
           target: ${{ matrix.platform.target }}
       - name: Build library
         run: "cargo build --release --target ${{ matrix.platform.target }}"
-      - name: List files
-        run: "find -type f > list.txt"
-      - name: capture file list
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform.os-name }} file list
-          path: list.txt
       - name: capture build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.os-name }}
-          path: target/release/${{ matrix.platform.output-file }}
+          path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.output-file }}
