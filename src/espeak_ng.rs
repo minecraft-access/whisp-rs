@@ -4,6 +4,7 @@ use std::ffi::{c_void,CStr,CString};
 use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::sync::Mutex;
+use std::iter::once;
 use crate::speech_synthesizer::{SpeechError,SpeechResult,SpeechSynthesizer,Voice};
 lazy_static! {
   static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::default()));
@@ -31,7 +32,8 @@ impl SpeechSynthesizer for EspeakNg {
     espeakRATE_MAXIMUM
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
-    let voices_ptr = unsafe { espeak_ListVoices(std::ptr::null_mut()) };
+    let mut voice_spec = espeak_VOICE { name: std::ptr::null(), languages: std::ptr::null(), identifier: std::ptr::null(), gender: 0, age: 0, variant: 0, xx1: 0, score: 0, spare: std::ptr::null_mut() };
+    let voices_ptr = unsafe { espeak_ListVoices(&mut voice_spec) };
     let mut voices_ptr_copy = voices_ptr.clone();
     let mut count: usize = 0;
     while unsafe { !(*voices_ptr_copy).is_null() } {
@@ -71,10 +73,15 @@ impl SpeechSynthesizer for EspeakNg {
         languages_ptr_copy = languages_ptr_copy.add(1);
       };
       let language = languages.into_iter().min_by_key(|tuple| tuple.0);
-      Voice { synthesizer: self, name, language: language.unwrap_or((0, "empty".to_owned())).1 }
+      (name, language.unwrap_or((0, "empty".to_owned())).1)
     })
-    .collect::<Vec<Voice>>() };
-    Ok(voices)
+    .collect::<Vec<(String, String)>>() };
+    let variants = voices.iter().filter(|voice| voice.1=="variant");
+    let main_voices = voices.iter().filter(|voice| voice.1!="variant");
+    let voices = main_voices.flat_map(|voice|
+      once(Voice { synthesizer: self, display_name: voice.0.replace("_", " "), name: voice.0.clone(), language: voice.1.clone() })
+        .chain(variants.clone().map(move |variant| Voice { synthesizer: self, display_name: voice.0.replace("_", " ")+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.0, language: voice.1.clone() })));
+    Ok(voices.collect::<Vec<Voice>>())
   }
   fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, pitch_range: u8, text: &str) -> Result<SpeechResult, SpeechError> {
     let voice_cstr = CString::new(voice)?;
