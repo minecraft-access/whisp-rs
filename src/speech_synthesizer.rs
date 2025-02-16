@@ -1,5 +1,10 @@
 use std::error::Error;
 use std::fmt;
+pub struct Voice<'a> {
+  pub synthesizer: &'a dyn SpeechSynthesizer,
+  pub name: String,
+  pub language: String
+}
 pub struct SpeechResult {
   pub pcm: Vec<u8>,
   pub sample_rate: u32
@@ -21,6 +26,6 @@ pub trait SpeechSynthesizer {
   fn new() -> Result<Self, SpeechError> where Self: Sized;
   fn min_rate(&self) -> u32;
   fn max_rate(&self) -> u32;
-  fn list_voices(&self, language: &str) -> Result<Vec<String>, SpeechError>;
+  fn list_voices(&self) -> Result<Vec<Voice>, SpeechError>;
   fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, pitch_range: u8, text: &str) -> Result<SpeechResult, SpeechError>;
 }
