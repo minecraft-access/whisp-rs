@@ -50,7 +50,7 @@ impl SpeechSynthesizer for EspeakNg {
     if rate < self.min_rate() || rate > self.max_rate() { return Err(SpeechError { message: "Rate is out of range".to_owned() }) };
     handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRATE, rate.try_into()?, 0) })?;
     if volume > 100 { return Err(SpeechError { message: "Volume is out of range".to_owned() }) };
-    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, volume.try_into()?, 0) })?;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, (volume*2).try_into()?, 0) })?;
     if pitch > 100 { return Err(SpeechError { message: "Pitch is out of range".to_owned() }) };
     handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch.try_into()?, 0) })?;
     if pitch_range > 100 { return Err(SpeechError { message: "Pitch_range is out of range".to_owned() }) };
