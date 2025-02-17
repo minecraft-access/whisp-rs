@@ -51,7 +51,7 @@ impl SpeechSynthesizer for EspeakNg {
       let mut priority = 0;
       let mut last_byte_was_null = true;
       let mut last_byte_was_priority = false;
-      let mut languages: Vec<(i8, String)> = Vec::new();
+      let mut languages: Vec<(u8, String)> = Vec::new();
       while !(last_byte_was_null && (*languages_ptr_copy)==0) {
         match (last_byte_was_null, last_byte_was_priority, *languages_ptr_copy) {
           (true, _, byte) => {
@@ -64,12 +64,12 @@ impl SpeechSynthesizer for EspeakNg {
             last_byte_was_priority = false;
             if byte==0 {
               last_byte_was_null = true;
-              languages.push((priority, CStr::from_ptr(string_start).to_str().unwrap().to_owned()));
+              languages.push((priority.try_into().unwrap(), CStr::from_ptr(string_start).to_str().unwrap().to_owned()));
             };
           },
           (_, _, 0) => {
             last_byte_was_null = true;
-            languages.push((priority, CStr::from_ptr(string_start).to_str().unwrap().to_owned()));
+            languages.push((priority.try_into().unwrap(), CStr::from_ptr(string_start).to_str().unwrap().to_owned()));
           },
           (_, _, _) => {}
         };
