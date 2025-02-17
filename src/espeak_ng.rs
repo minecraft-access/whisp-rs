@@ -48,7 +48,7 @@ impl SpeechSynthesizer for EspeakNg {
       let name = CStr::from_ptr((**voice).name).to_str().unwrap().to_owned();
       let mut languages_ptr_copy = (**voice).languages.clone();
       let mut string_start = languages_ptr_copy.clone();
-      let mut priority: i8 = 0;
+      let mut priority = 0;
       let mut last_byte_was_null = true;
       let mut last_byte_was_priority = false;
       let mut languages: Vec<(i8, String)> = Vec::new();
