@@ -1,5 +1,5 @@
 use jni::JNIEnv;
-use jni::objects::{JByteArray,JClass,JObject,JObjectArray,JString};
+use jni::objects::{JByteArray,JClass,JObject,JValue,JObjectArray,JString};
 use jni::sys::{jbyte,jint};
 use std::sync::OnceLock;
 use crate::speech_synthesizer::{SpeechResult,SpeechSynthesizer};
@@ -20,22 +20,19 @@ mod espeak_ng;
 }
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_listVoices<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>) -> JObjectArray<'local> {
   let voices = ESPEAK_NG.get().unwrap().list_voices().unwrap();
-  let string_class = env.find_class("java/lang/String").expect("Failed to get class: java.lang.String");
-  let string_array_class = env.find_class("[Ljava/lang/String;").expect("Failed to get class: [java.lang.String]");
-  let empty_string = env.new_string("").expect("Failed to create empty string");
-  let arrays = voices.into_iter().map(|voice| {
-    let array = env.new_object_array(2, &string_class, &empty_string).expect("Failed to create Java array");
-    let name_jstring = env.new_string(&voice.name).expect("Failed to create Java string");
-    env.set_object_array_element(&array, 0, name_jstring).expect("Failed to add string to array");
-    let language_jstring = env.new_string(&voice.language).expect("Failed to create Java string");
-    env.set_object_array_element(&array, 1, language_jstring).expect("Failed to add string to array");
-    array
+  let voice_class = env.find_class("dev/emassey0135/audionavigation/speech/Voice").expect("Failed to get class: dev.emassey0135.audionavigation.speech.Voice");
+  let voices = voices.into_iter().map(|voice| {
+    let synthesizer = env.new_string(&voice.synthesizer.name()).expect("Failed to create Java string");
+    let display_name = env.new_string(&voice.display_name).expect("Failed to create Java string");
+    let name = env.new_string(&voice.name).expect("Failed to create Java string");
+    let language = env.new_string(&voice.language).expect("Failed to create Java string");
+    env.new_object(&voice_class, "(Ljava.lang.String;Ljava.lang.String;Ljava.lang.String;Ljava.lang.String;)V", &[JValue::Object(&synthesizer), JValue::Object(&display_name), JValue::Object(&name), JValue::Object(&language)]).expect("Failed to create Voice object")
   })
-  .collect::<Vec<JObjectArray>>();
-  let array = env.new_object_array(arrays.len().try_into().unwrap(), string_array_class, JObject::null()).expect("Failed to create Java array");
+  .collect::<Vec<JObject>>();
+  let array = env.new_object_array(voices.len().try_into().unwrap(), voice_class, JObject::null()).expect("Failed to create Java array");
   let mut index: usize = 0;
-  for voice_array in arrays {
-    env.set_object_array_element(&array, index.try_into().unwrap(), voice_array).expect("Failed to add array to array");
+  for voice in voices {
+    env.set_object_array_element(&array, index.try_into().unwrap(), voice).expect("Failed to add Voice to array");
     index+=1
   }
   array
