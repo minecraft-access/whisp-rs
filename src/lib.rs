@@ -7,10 +7,10 @@ use crate::espeak_ng::EspeakNg;
 mod speech_synthesizer;
 mod espeak_ng;
   static ESPEAK_NG: OnceLock<EspeakNg> = OnceLock::new();
-#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
   ESPEAK_NG.set(EspeakNg::new().unwrap()).unwrap()
 }
-#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, voice: JString<'local>, rate: jint, volume: jbyte, pitch: jbyte, pitch_range: jbyte, text: JString<'local>) -> JByteArray<'local> {
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, voice: JString<'local>, rate: jint, volume: jbyte, pitch: jbyte, pitch_range: jbyte, text: JString<'local>) -> JByteArray<'local> {
   let voice: String = env.get_string(&voice).unwrap().into();
   let text: String = env.get_string(&text).unwrap().into();
   let result: SpeechResult = ESPEAK_NG.get().unwrap().speak(&voice, rate.try_into().unwrap(), volume.try_into().unwrap(), pitch.try_into().unwrap(), pitch_range.try_into().unwrap(), &text).unwrap();
@@ -18,7 +18,7 @@ mod espeak_ng;
   let buffer = env.byte_array_from_slice(&pcm).unwrap();
   buffer
 }
-#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_EspeakNative_listVoices<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>) -> JObjectArray<'local> {
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_listVoices<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>) -> JObjectArray<'local> {
   let voices = ESPEAK_NG.get().unwrap().list_voices().unwrap();
   let voice_class = env.find_class("dev/emassey0135/audionavigation/speech/Voice").unwrap();
   let voices = voices.into_iter().map(|voice| {
