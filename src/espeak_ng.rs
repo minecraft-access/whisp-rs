@@ -20,7 +20,7 @@ fn handle_espeak_error(error: espeak_ERROR) -> Result<(), SpeechError> {
 }
 impl SpeechSynthesizer for EspeakNg {
   fn new() -> Result<Self, SpeechError> {
-    let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_RETRIEVAL;
+    let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
     let path_cstr = CString::new(".")?;
     let result = EspeakNg { sample_rate: unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? }};
     Ok(result)
@@ -106,7 +106,6 @@ impl SpeechSynthesizer for EspeakNg {
     let identifier = std::ptr::null_mut();
     let user_data = std::ptr::null_mut();
     handle_espeak_error(unsafe { espeak_Synth(text_cstr.as_ptr() as *const c_void, text_cstr.count_bytes(), position, position_type, end_position, flags, identifier, user_data) })?;
-    handle_espeak_error(unsafe { espeak_Synchronize() })?;
     let result = BUFFER.lock().unwrap().take();
     Ok(SpeechResult { pcm: result, sample_rate: self.sample_rate })
   }
