@@ -25,6 +25,9 @@ impl SpeechSynthesizer for EspeakNg {
     let result = EspeakNg { sample_rate: unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? }};
     Ok(result)
   }
+  fn name(&self) -> String {
+    "eSpeak-NG".to_owned()
+  }
   fn min_rate(&self) -> u32 {
     espeakRATE_MINIMUM
   }

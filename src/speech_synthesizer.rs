@@ -25,6 +25,7 @@ impl<T: Error> From<T> for SpeechError {
 }
 pub trait SpeechSynthesizer {
   fn new() -> Result<Self, SpeechError> where Self: Sized;
+  fn name(&self) -> String;
   fn min_rate(&self) -> u32;
   fn max_rate(&self) -> u32;
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError>;
