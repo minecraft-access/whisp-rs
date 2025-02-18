@@ -46,6 +46,7 @@ impl SpeechSynthesizer for EspeakNg {
     let voices_slice = unsafe { std::slice::from_raw_parts(voices_ptr, count) };
     let voices = unsafe { voices_slice.into_iter().map(|voice| {
       let name = CStr::from_ptr((**voice).name).to_str().unwrap().to_owned();
+      let identifier = CStr::from_ptr((**voice).identifier).to_str().unwrap().to_owned();
       let mut languages_ptr_copy = (**voice).languages.clone();
       let mut string_start = languages_ptr_copy.clone();
       let mut priority = 0;
@@ -76,14 +77,14 @@ impl SpeechSynthesizer for EspeakNg {
         languages_ptr_copy = languages_ptr_copy.add(1);
       };
       let language = languages.into_iter().min_by_key(|tuple| tuple.0);
-      (name, language.unwrap_or((0, "empty".to_owned())).1)
+      (name, identifier, language.unwrap_or((0, "empty".to_owned())).1)
     })
-    .collect::<Vec<(String, String)>>() };
-    let variants = voices.iter().filter(|voice| voice.1=="variant");
-    let main_voices = voices.iter().filter(|voice| voice.1!="variant");
+    .collect::<Vec<(String, String, String)>>() };
+    let variants = voices.iter().filter(|voice| voice.2=="variant");
+    let main_voices = voices.iter().filter(|voice| voice.2!="variant");
     let voices = main_voices.flat_map(|voice|
-      once(Voice { synthesizer: self, display_name: voice.0.replace("_", " "), name: voice.0.clone(), language: voice.1.clone() })
-        .chain(variants.clone().map(move |variant| Voice { synthesizer: self, display_name: voice.0.replace("_", " ")+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.0, language: voice.1.clone() })));
+      once(Voice { synthesizer: self, display_name: voice.0.clone(), name: voice.0.clone(), language: voice.2.clone() })
+        .chain(variants.clone().map(move |variant| Voice { synthesizer: self, display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), language: voice.2.clone() })));
     Ok(voices.collect::<Vec<Voice>>())
   }
   fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, pitch_range: u8, text: &str) -> Result<SpeechResult, SpeechError> {
