@@ -87,7 +87,7 @@ impl SpeechSynthesizer for EspeakNg {
         .chain(variants.clone().map(move |variant| Voice { synthesizer: self, display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), language: voice.2.clone() })));
     Ok(voices.collect::<Vec<Voice>>())
   }
-  fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, pitch_range: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+  fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
     let voice_cstr = CString::new(voice)?;
     handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
     if rate < self.min_rate() || rate > self.max_rate() { return Err(SpeechError { message: "Rate is out of range".to_owned() }) };
@@ -96,8 +96,6 @@ impl SpeechSynthesizer for EspeakNg {
     handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, (volume*2).try_into()?, 0) })?;
     if pitch > 100 { return Err(SpeechError { message: "Pitch is out of range".to_owned() }) };
     handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch.try_into()?, 0) })?;
-    if pitch_range > 100 { return Err(SpeechError { message: "Pitch_range is out of range".to_owned() }) };
-    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRANGE, pitch_range.try_into()?, 0) })?;
     unsafe { espeak_SetSynthCallback(Some(synth_callback)) };
     let text_cstr = CString::new(text)?;
     let position = 0u32;

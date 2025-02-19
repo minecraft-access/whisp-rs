@@ -12,6 +12,8 @@ edition = "2021"
 espeakng-sys = { git = "https://github.com/emassey0135/espeakng-sys.git", version = "0.3.0", features = ["clang-runtime"] }
 jni = "0.21.1"
 lazy_static = "1.5.0"
+sapi-lite = "0.1.1"
+windows = { version = "0.28", features = ["Win32_System_Com"] }
 
 [lib]
 crate-type = ["cdylib"]
