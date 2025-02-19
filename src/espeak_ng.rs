@@ -26,7 +26,7 @@ impl SpeechSynthesizer for EspeakNg {
     Ok(result)
   }
   fn name(&self) -> String {
-    "eSpeak-NG".to_owned()
+    "eSpeak NG".to_owned()
   }
   fn min_rate(&self) -> u32 {
     espeakRATE_MINIMUM
