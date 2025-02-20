@@ -29,5 +29,5 @@ pub trait SpeechSynthesizer {
   fn min_rate(&self) -> u32;
   fn max_rate(&self) -> u32;
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError>;
-  fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError>;
+  fn speak(&self, voice: &str, language: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError>;
 }

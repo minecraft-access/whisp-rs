@@ -19,8 +19,16 @@ fn list_voices(synthesizer: String) -> Result<Vec<Voice>, SpeechError> {
   }).collect::<Vec<Voice>>();
   Ok(voices)
 }
-fn speak(synthesizer: &SyncSynthesizer, voice: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
-  let voice = installed_voices(Some(VoiceSelector::new().name_eq(voice)), None)?.next().ok_or(SpeechError { message: "No SAPI voices found with this name".to_owned() })?;
+fn speak(synthesizer: &SyncSynthesizer, voice: &str, language: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+  let voice = installed_voices(Some(VoiceSelector::new().name_eq(voice)), None)?
+    .filter(|voice| {
+      match voice.language() {
+        None => language=="none",
+        Some(os_string) => os_string.into_string().unwrap().to_lowercase()==language
+      }
+    })
+    .next()
+    .ok_or(SpeechError { message: "No SAPI voices found with this name and language".to_owned() })?;
   synthesizer.set_voice(&voice)?;
   let rate: i32 = rate.try_into()?;
   let rate: i32 = (rate/5)-10;
@@ -59,7 +67,7 @@ fn speak(synthesizer: &SyncSynthesizer, voice: &str, rate: u32, volume: u8, pitc
 }
 enum Operation {
   ListVoices,
-  Speak(String, u32, u8, u8, String)
+  Speak(String, String, u32, u8, u8, String)
 }
 enum ResultValue {
   ListVoices(Result<Vec<Voice>, SpeechError>),
@@ -84,7 +92,7 @@ impl SpeechSynthesizer for Sapi {
       while let Ok(operation) = operation_rx.recv() {
         match operation {
           Operation::ListVoices => result_tx.send(ResultValue::ListVoices(list_voices(name()))).unwrap(),
-          Operation::Speak(voice, rate, volume, pitch, text) => result_tx.send(ResultValue::Speak(speak(&synthesizer, &voice, rate, volume, pitch, &text))).unwrap()
+          Operation::Speak(voice, language, rate, volume, pitch, text) => result_tx.send(ResultValue::Speak(speak(&synthesizer, &voice, &language, rate, volume, pitch, &text))).unwrap()
         };
       };
     });
@@ -106,8 +114,8 @@ impl SpeechSynthesizer for Sapi {
       _ => Err(SpeechError { message: "Received result value for other operation".to_owned() })
     }
   }
-  fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
-    self.tx.send(Operation::Speak(voice.to_owned(), rate, volume, pitch, text.to_owned()))?;
+  fn speak(&self, voice: &str, language: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+    self.tx.send(Operation::Speak(voice.to_owned(), language.to_owned(), rate, volume, pitch, text.to_owned()))?;
     match self.rx.lock()?.recv()? {
       ResultValue::Speak(result) => result,
       _ => Err(SpeechError { message: "Received result value for other operation".to_owned() })

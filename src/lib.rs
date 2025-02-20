@@ -1,27 +1,16 @@
 use jni::JNIEnv;
 use jni::objects::{JClass,JObject,JValue,JObjectArray,JString};
 use jni::sys::{jbyte,jint};
-use std::sync::OnceLock;
-use crate::speech_synthesizer::{SpeechResult,SpeechSynthesizer};
-use crate::espeak_ng::EspeakNg;
-use crate::sapi::Sapi;
+use crate::speech::{initialize, list_voices, speak};
 mod speech_synthesizer;
 mod espeak_ng;
 mod sapi;
-  static SAPI: OnceLock<Sapi> = OnceLock::new();
+mod speech;
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
-  SAPI.set(Sapi::new().unwrap()).unwrap()
-}
-#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, voice: JString<'local>, rate: jint, volume: jbyte, pitch: jbyte, text: JString<'local>) -> JObject<'local> {
-  let voice: String = env.get_string(&voice).unwrap().into();
-  let text: String = env.get_string(&text).unwrap().into();
-  let result: SpeechResult = SAPI.get().unwrap().speak(&voice, rate.try_into().unwrap(), volume.try_into().unwrap(), pitch.try_into().unwrap(), &text).unwrap();
-  let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
-  let speech_result_class = env.find_class("dev/emassey0135/audionavigation/speech/SpeechResult").unwrap();
-  env.new_object(&speech_result_class, "([BI)V", &[JValue::Object(&buffer), JValue::Int(result.sample_rate.try_into().unwrap())]).unwrap()
+  initialize().unwrap()
 }
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_listVoices<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>) -> JObjectArray<'local> {
-  let voices = SAPI.get().unwrap().list_voices().unwrap();
+  let voices = list_voices().unwrap();
   let voice_class = env.find_class("dev/emassey0135/audionavigation/speech/Voice").unwrap();
   let voices = voices.into_iter().map(|voice| {
     let synthesizer = env.new_string(&voice.synthesizer).unwrap();
@@ -38,4 +27,14 @@ mod sapi;
     index+=1
   }
   array
+}
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, synthesizer: JString<'local>, voice: JString<'local>, language: JString<'local>, rate: jint, volume: jbyte, pitch: jbyte, text: JString<'local>) -> JObject<'local> {
+  let synthesizer: String = env.get_string(&synthesizer).unwrap().into();
+  let voice: String = env.get_string(&voice).unwrap().into();
+  let language: String = env.get_string(&language).unwrap().into();
+  let text: String = env.get_string(&text).unwrap().into();
+  let result = speak(&synthesizer, &voice, &language, rate.try_into().unwrap(), volume.try_into().unwrap(), pitch.try_into().unwrap(), &text).unwrap();
+  let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
+  let speech_result_class = env.find_class("dev/emassey0135/audionavigation/speech/SpeechResult").unwrap();
+  env.new_object(&speech_result_class, "([BI)V", &[JValue::Object(&buffer), JValue::Int(result.sample_rate.try_into().unwrap())]).unwrap()
 }

@@ -87,7 +87,7 @@ impl SpeechSynthesizer for EspeakNg {
         .chain(variants.clone().map(move |variant| Voice { synthesizer: self.name(), display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), language: voice.2.clone() })));
     Ok(voices.collect::<Vec<Voice>>())
   }
-  fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+  fn speak(&self, voice: &str, _language: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
     let voice_cstr = CString::new(voice)?;
     handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
     if rate < self.min_rate() || rate > self.max_rate() { return Err(SpeechError { message: "Rate is out of range".to_owned() }) };
