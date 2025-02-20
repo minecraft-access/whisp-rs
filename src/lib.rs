@@ -4,7 +4,7 @@ use jni::sys::{jbyte,jint};
 use crate::speech::{initialize, list_voices, speak};
 mod speech_synthesizer;
 mod espeak_ng;
-mod sapi;
+#[cfg(windows)] mod sapi;
 mod speech;
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
   initialize().unwrap()

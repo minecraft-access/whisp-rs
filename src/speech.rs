@@ -3,16 +3,18 @@ use std::sync::Mutex;
 use lazy_static::lazy_static;
 use crate::speech_synthesizer::{SpeechError,SpeechResult,SpeechSynthesizer,Voice};
 use crate::espeak_ng::EspeakNg;
-use crate::sapi::Sapi;
+#[cfg(windows)] use crate::sapi::Sapi;
 lazy_static! {
   static ref SYNTHESIZERS: Mutex<HashMap<String, Box<(dyn SpeechSynthesizer + Send)>>> = Mutex::new(HashMap::new());
 }
 pub fn initialize() -> Result<(), SpeechError> {
   let mut synthesizers = SYNTHESIZERS.lock()?;
   let espeak_ng = EspeakNg::new()?;
-  let sapi = Sapi::new()?;
   synthesizers.insert(espeak_ng.name(), Box::new(espeak_ng));
-  synthesizers.insert(sapi.name(), Box::new(sapi));
+  #[cfg(windows)] {
+    let sapi = Sapi::new()?;
+    synthesizers.insert(sapi.name(), Box::new(sapi));
+  }
   Ok(())
 }
 pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
