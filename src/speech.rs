@@ -24,7 +24,7 @@ pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
     .collect::<Result<Vec<Vec<Voice>>, SpeechError>>()?;
   Ok(voices.into_iter().flatten().collect::<Vec<Voice>>())
 }
-pub fn speak(synthesizer: &str, voice: &str, language: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+pub fn speak(synthesizer: &str, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
   match SYNTHESIZERS.lock()?.get(synthesizer) {
     None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
     Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text)

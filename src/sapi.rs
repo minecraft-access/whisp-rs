@@ -19,7 +19,7 @@ fn list_voices(synthesizer: String) -> Result<Vec<Voice>, SpeechError> {
   }).collect::<Vec<Voice>>();
   Ok(voices)
 }
-fn speak(synthesizer: &SyncSynthesizer, voice: &str, language: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+fn speak(synthesizer: &SyncSynthesizer, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
   let voice = installed_voices(Some(VoiceSelector::new().name_eq(voice)), None)?
     .filter(|voice| {
       match voice.language() {
@@ -30,16 +30,16 @@ fn speak(synthesizer: &SyncSynthesizer, voice: &str, language: &str, rate: u32, 
     .next()
     .ok_or(SpeechError { message: "No SAPI voices found with this name and language".to_owned() })?;
   synthesizer.set_voice(&voice)?;
-  let rate: i32 = rate.try_into()?;
-  let rate: i32 = (rate/5)-10;
+  let rate = rate as i32;
+  let rate = (rate/5)-10;
   synthesizer.set_rate(rate)?;
-  synthesizer.set_volume::<u32>(volume.into())?;
+  synthesizer.set_volume(volume as u32)?;
   let memory_stream = MemoryStream::new(None)?;
   let audio_format = AudioFormat { sample_rate: SampleRate::Hz44100, bit_rate: BitRate::Bits16, channels: Channels::Mono };
   let audio_stream = AudioStream::from_stream(memory_stream.try_clone()?, &audio_format)?;
   synthesizer.set_output(SpeechOutput::Stream(audio_stream), false)?;
-  let pitch: i32 = pitch.try_into()?;
-  let pitch: i32 = (pitch/5)-10;
+  let pitch = pitch as i32;
+  let pitch = (pitch/5)-10;
   let speech = SpeechBuilder::new()
     .start_pitch(pitch)
     .say(text)
@@ -67,7 +67,7 @@ fn speak(synthesizer: &SyncSynthesizer, voice: &str, language: &str, rate: u32, 
 }
 enum Operation {
   ListVoices,
-  Speak(String, String, u32, u8, u8, String)
+  Speak(String, String, u8, u8, u8, String)
 }
 enum ResultValue {
   ListVoices(Result<Vec<Voice>, SpeechError>),
@@ -101,12 +101,6 @@ impl SpeechSynthesizer for Sapi {
   fn name(&self) -> String {
     name()
   }
-  fn min_rate(&self) -> u32 {
-    0
-  }
-  fn max_rate(&self) -> u32 {
-    100
-  }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     self.tx.send(Operation::ListVoices)?;
     match self.rx.lock()?.recv()? {
@@ -114,7 +108,7 @@ impl SpeechSynthesizer for Sapi {
       _ => Err(SpeechError { message: "Received result value for other operation".to_owned() })
     }
   }
-  fn speak(&self, voice: &str, language: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+  fn speak(&self, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
     self.tx.send(Operation::Speak(voice.to_owned(), language.to_owned(), rate, volume, pitch, text.to_owned()))?;
     match self.rx.lock()?.recv()? {
       ResultValue::Speak(result) => result,

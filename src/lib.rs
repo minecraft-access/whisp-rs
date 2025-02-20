@@ -1,6 +1,6 @@
 use jni::JNIEnv;
 use jni::objects::{JClass,JObject,JValue,JObjectArray,JString};
-use jni::sys::{jbyte,jint};
+use jni::sys::{jbyte};
 use crate::speech::{initialize, list_voices, speak};
 mod speech_synthesizer;
 mod espeak_ng;
@@ -28,7 +28,7 @@ mod speech;
   }
   array
 }
-#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, synthesizer: JString<'local>, voice: JString<'local>, language: JString<'local>, rate: jint, volume: jbyte, pitch: jbyte, text: JString<'local>) -> JObject<'local> {
+#[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_speak<'local>(mut env: JNIEnv<'local>, _class: JClass<'local>, synthesizer: JString<'local>, voice: JString<'local>, language: JString<'local>, rate: jbyte, volume: jbyte, pitch: jbyte, text: JString<'local>) -> JObject<'local> {
   let synthesizer: String = env.get_string(&synthesizer).unwrap().into();
   let voice: String = env.get_string(&voice).unwrap().into();
   let language: String = env.get_string(&language).unwrap().into();
