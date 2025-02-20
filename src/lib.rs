@@ -24,7 +24,7 @@ mod sapi;
   let voices = SAPI.get().unwrap().list_voices().unwrap();
   let voice_class = env.find_class("dev/emassey0135/audionavigation/speech/Voice").unwrap();
   let voices = voices.into_iter().map(|voice| {
-    let synthesizer = env.new_string(&voice.synthesizer.name()).unwrap();
+    let synthesizer = env.new_string(&voice.synthesizer).unwrap();
     let display_name = env.new_string(&voice.display_name).unwrap();
     let name = env.new_string(&voice.name).unwrap();
     let language = env.new_string(&voice.language).unwrap();

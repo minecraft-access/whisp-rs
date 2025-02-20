@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
-pub struct Voice<'a> {
-  pub synthesizer: &'a dyn SpeechSynthesizer,
+pub struct Voice {
+  pub synthesizer: String,
   pub display_name: String,
   pub name: String,
   pub language: String

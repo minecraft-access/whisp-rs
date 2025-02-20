@@ -83,8 +83,8 @@ impl SpeechSynthesizer for EspeakNg {
     let variants = voices.iter().filter(|voice| voice.2=="variant");
     let main_voices = voices.iter().filter(|voice| voice.2!="variant");
     let voices = main_voices.flat_map(|voice|
-      once(Voice { synthesizer: self, display_name: voice.0.clone(), name: voice.0.clone(), language: voice.2.clone() })
-        .chain(variants.clone().map(move |variant| Voice { synthesizer: self, display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), language: voice.2.clone() })));
+      once(Voice { synthesizer: self.name(), display_name: voice.0.clone(), name: voice.0.clone(), language: voice.2.clone() })
+        .chain(variants.clone().map(move |variant| Voice { synthesizer: self.name(), display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), language: voice.2.clone() })));
     Ok(voices.collect::<Vec<Voice>>())
   }
   fn speak(&self, voice: &str, rate: u32, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
