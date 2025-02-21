@@ -4,7 +4,7 @@ use windows::Win32::System::Com::{IStream,STREAM_SEEK_SET};
 use std::fmt;
 use std::sync::{mpsc,Mutex};
 use std::thread;
-use crate::speech_synthesizer::{SpeechError,SpeechResult,SpeechSynthesizer,Voice};
+use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,Voice};
 fn name() -> String {
   "SAPI 5".to_owned()
 }
@@ -63,7 +63,7 @@ fn speak(synthesizer: &SyncSynthesizer, voice: &str, language: &str, rate: u8, v
       Err(_) => break
     };
   }
-  Ok(SpeechResult { pcm, sample_rate: 44100 })
+  Ok(SpeechResult { pcm, sample_format: SampleFormat::S16, sample_rate: 44100 })
 }
 enum Operation {
   ListVoices,

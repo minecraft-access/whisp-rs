@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::sync::Mutex;
 use std::iter::once;
-use crate::speech_synthesizer::{SpeechError,SpeechResult,SpeechSynthesizer,Voice};
+use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,Voice};
 lazy_static! {
   static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::default()));
 }
@@ -100,7 +100,7 @@ impl SpeechSynthesizer for EspeakNg {
     let user_data = std::ptr::null_mut();
     handle_espeak_error(unsafe { espeak_Synth(text_cstr.as_ptr() as *const c_void, text_cstr.count_bytes(), position, position_type, end_position, flags, identifier, user_data) })?;
     let result = BUFFER.lock().unwrap().take();
-    Ok(SpeechResult { pcm: result, sample_rate: self.sample_rate })
+    Ok(SpeechResult { pcm: result, sample_format: SampleFormat::S16, sample_rate: self.sample_rate })
   }
 }
 unsafe extern "C" fn synth_callback(wav: *mut c_short, sample_count: c_int, _events: *mut espeak_EVENT) -> c_int {

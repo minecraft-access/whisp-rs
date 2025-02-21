@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use crate::speech_synthesizer::{SpeechError,SpeechResult,SpeechSynthesizer,Voice};
 use crate::espeak_ng::EspeakNg;
 #[cfg(windows)] use crate::sapi::Sapi;
+#[cfg(target_os = "macos")] use crate::av_speech_synthesizer::AvSpeechSynthesizer;
 lazy_static! {
   static ref SYNTHESIZERS: Mutex<HashMap<String, Box<(dyn SpeechSynthesizer + Send)>>> = Mutex::new(HashMap::new());
 }
@@ -14,6 +15,10 @@ pub fn initialize() -> Result<(), SpeechError> {
   #[cfg(windows)] {
     let sapi = Sapi::new()?;
     synthesizers.insert(sapi.name(), Box::new(sapi));
+  }
+  #[cfg(target_os = "macos")] {
+    let av_speech_synthesizer = AvSpeechSynthesizer::new()?;
+    synthesizers.insert(av_speech_synthesizer.name(), Box::new(av_speech_synthesizer));
   }
   Ok(())
 }

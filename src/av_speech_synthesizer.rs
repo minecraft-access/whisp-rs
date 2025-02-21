@@ -1,16 +1,17 @@
 use std::ptr::NonNull;
-use std::sync::{Arc,RwLock};
+use std::sync::{Arc,Mutex,OnceLock,RwLock};
 use objc2::rc::Retained;
 use objc2_foundation::NSString;
 use block2::RcBlock;
-use objc2_avf_audio::{AVAudioBuffer,AVSpeechSynthesisVoice,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
-use crate::speech_synthesizer::{SpeechError,SpeechResult,SpeechSynthesizer,Voice};
+use objc2_avf_audio::{AVAudioBuffer,AVAudioCommonFormat,AVSpeechSynthesisVoice,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
+use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,Voice};
 #[derive(Debug)] pub struct AvSpeechSynthesizer {
-  synthesizer: Retained<AVSpeechSynthesizer>
+  synthesizer: Mutex<Retained<AVSpeechSynthesizer>>
 }
+unsafe impl Send for AvSpeechSynthesizer {}
 impl SpeechSynthesizer for AvSpeechSynthesizer {
   fn new() -> Result<Self, SpeechError> {
-    Ok(AvSpeechSynthesizer { synthesizer: unsafe { AVSpeechSynthesizer::new() }})
+    Ok(AvSpeechSynthesizer { synthesizer: unsafe { Mutex::new(AVSpeechSynthesizer::new()) }})
   }
   fn name(&self) -> String {
     "AVSpeechSynthesizer".to_owned()
@@ -50,7 +51,9 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
       utterance.setVolume(volume);
       let pcm: Arc<RwLock<Vec<u8>>> = Arc::new(RwLock::new(Vec::new()));
       let pcm2 = pcm.clone();
-      let sample_rate: Arc<RwLock<u32>> = Arc::new(RwLock::new(0));
+      let sample_format: Arc<OnceLock<SampleFormat>> = Arc::new(OnceLock::new());
+      let sample_format2 = sample_format.clone();
+      let sample_rate: Arc<OnceLock<u32>> = Arc::new(OnceLock::new());
       let sample_rate2 = sample_rate.clone();
       let callback = RcBlock::new(move |buffer: NonNull<AVAudioBuffer>| {
         let buffers = buffer.as_ref().audioBufferList().as_ref();
@@ -60,10 +63,19 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
           let mut buffer = buffer.into_iter().map(|byte| byte.clone()).collect::<Vec<u8>>();
           pcm2.write().unwrap().append(&mut buffer);
         });
+        let format = buffer.as_ref().format();
+        sample_format2.set(match format.commonFormat() {
+          AVAudioCommonFormat::PCMFormatFloat32 => SampleFormat::F32,
+          AVAudioCommonFormat::PCMFormatInt16 => SampleFormat::S16,
+          _ => return
+        }).unwrap();
+        sample_rate2.set(format.sampleRate() as u32).unwrap();
       });
-      self.synthesizer.writeUtterance_toBufferCallback(&utterance, RcBlock::into_raw(callback));
+      self.synthesizer.lock()?.writeUtterance_toBufferCallback(&utterance, RcBlock::into_raw(callback));
+      let sample_format = sample_format.get().ok_or(SpeechError { message: "Sample format not set".to_owned() })?.to_owned();
+      let sample_rate = sample_rate.get().ok_or(SpeechError { message: "Sample rate not set".to_owned() })?.to_owned();
       let pcm = pcm.read()?.clone();
-      Ok(SpeechResult { pcm, sample_rate: 0 })
+      Ok(SpeechResult { pcm, sample_format, sample_rate })
     }
   }
 }

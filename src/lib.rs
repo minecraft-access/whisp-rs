@@ -37,5 +37,5 @@ mod speech;
   let result = speak(&synthesizer, &voice, &language, rate.try_into().unwrap(), volume.try_into().unwrap(), pitch.try_into().unwrap(), &text).unwrap();
   let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
   let speech_result_class = env.find_class("dev/emassey0135/audionavigation/speech/SpeechResult").unwrap();
-  env.new_object(&speech_result_class, "([BI)V", &[JValue::Object(&buffer), JValue::Int(result.sample_rate.try_into().unwrap())]).unwrap()
+  env.new_object(&speech_result_class, "([BBI)V", &[JValue::Object(&buffer), JValue::Byte(result.sample_format as i8), JValue::Int(result.sample_rate.try_into().unwrap())]).unwrap()
 }
