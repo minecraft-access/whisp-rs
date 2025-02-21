@@ -5,6 +5,7 @@ use crate::speech::{initialize, list_voices, speak};
 mod speech_synthesizer;
 mod espeak_ng;
 #[cfg(windows)] mod sapi;
+#[cfg(target_os = "macos")] mod av_speech_synthesizer;
 mod speech;
 #[no_mangle] pub extern "system" fn Java_dev_emassey0135_audionavigation_speech_Native_initialize<'local>(_env: JNIEnv<'local>, _class: JClass<'local>) {
   initialize().unwrap()
