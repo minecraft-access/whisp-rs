@@ -1,6 +1,6 @@
 [package]
 name = "audio-navigation-tts"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Elijah Massey <emassey0135@gmail.com>"]
 description = "A JNI library to expose several TTS systems to the Audio Navigation Minecraft mod"
 homepage = "https://github.com/emassey0135/audio-navigation-tts"
