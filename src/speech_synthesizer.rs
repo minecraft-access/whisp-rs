@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fmt;
-pub struct Voice {
+#[derive(Debug)] pub struct Voice {
   pub synthesizer: String,
   pub display_name: String,
   pub name: String,

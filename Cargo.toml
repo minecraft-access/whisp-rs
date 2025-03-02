@@ -16,15 +16,15 @@ lazy_static = "1.5.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.0"
 block2 = "0.6.0"
-objc2-foundation = { version = "0.3.0", default-features = false, features = ["std", "NSArray", "NSEnumerator", "NSString"] }
-objc2-avf-audio = { version = "0.3.0", default-features = false, features = ["AVAudioBuffer", "AVAudioFormat", "AVSpeechSynthesis", "block2", "objc2-core-audio-types", "std"] }
+objc2-foundation = { version = "0.3.0", default-features = false, features = ["std", "NSArray", "NSEnumerator", "NSRunLoop", "NSString"] }
+objc2-avf-audio = { version = "0.3.0", default-features = false, features = ["AVAudioBuffer", "AVAudioFormat", "AVAudioTypes", "AVSpeechSynthesis", "block2", "objc2-core-audio-types", "std"] }
 
 [target.'cfg(windows)'.dependencies]
 sapi-lite = "0.1.1"
 windows = { version = "0.28", features = ["Win32_System_Com"] }
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [build-dependencies]
 build-target = "0.4.0"
