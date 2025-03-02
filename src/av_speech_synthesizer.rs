@@ -3,7 +3,7 @@ use std::sync::{Arc,Mutex,mpsc,OnceLock,RwLock};
 use objc2::rc::Retained;
 use objc2_foundation::{NSDate,NSRunLoop,NSString};
 use block2::RcBlock;
-use objc2_avf_audio::{AVAudioBuffer,AVAudioPCMBuffer,AVAudioCommonFormat,AVSpeechSynthesisVoice,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
+use objc2_avf_audio::{AVAudioBuffer,AVAudioPCMBuffer,AVAudioCommonFormat,AVSpeechSynthesisVoice,AVSpeechSynthesisVoiceQuality,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
 use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,Voice};
 fn run_run_loop(duration: f64) {
   unsafe {
@@ -34,6 +34,12 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
           let language = voice.language().to_string().to_lowercase();
           let identifier = voice.identifier().to_string();
           let name = voice.name().to_string();
+          let quality = voice.quality();
+          let name = match quality {
+            AVSpeechSynthesisVoiceQuality::Enhanced => name+" (Enhanced)",
+            AVSpeechSynthesisVoiceQuality::Premium => name+" (Premium)",
+            _ => name,
+          };
           Voice { synthesizer: self.name(), display_name: name, name: identifier, language }
         })
         .collect::<Vec<Voice>>();
