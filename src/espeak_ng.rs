@@ -26,7 +26,7 @@ impl SpeechSynthesizer for EspeakNg {
     Ok(result)
   }
   fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData { name: "eSpeak NG".to_owned(), priority: 3, supports_to_audio_data: true, supports_to_audio_output: false }
+    SpeechSynthesizerData { name: "eSpeak NG".to_owned(), priority: 3, supports_to_audio_data: true, supports_to_audio_output: false, supports_speech_parameters: true }
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     let mut voice_spec = espeak_VOICE { name: std::ptr::null(), languages: std::ptr::null(), identifier: std::ptr::null(), gender: 0, age: 0, variant: 0, xx1: 0, score: 0, spare: std::ptr::null_mut() };
@@ -93,15 +93,17 @@ impl SpeechSynthesizer for EspeakNg {
   }
 }
 impl SpeechSynthesizerToAudioData for EspeakNg {
-  fn speak(&self, voice: &str, _language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
     let voice_cstr = CString::new(voice)?;
     handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
-    let rate = rate as f64;
+    let rate = rate.unwrap_or(50) as f64;
     let rate = (rate/100.0)*((espeakRATE_MAXIMUM-espeakRATE_MINIMUM) as f64)+(espeakRATE_MINIMUM as f64);
     let rate = (rate.round()) as i32;
     handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRATE, rate, 0) })?;
-    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, (volume*2).into(), 0) })?;
-    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch.into(), 0) })?;
+    let volume = volume.unwrap_or(100) as i32;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, volume*2, 0) })?;
+    let pitch = pitch.unwrap_or(50) as i32;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch, 0) })?;
     unsafe { espeak_SetSynthCallback(Some(synth_callback)) };
     let text_cstr = CString::new(text)?;
     let position = 0u32;

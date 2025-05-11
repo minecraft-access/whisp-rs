@@ -4,7 +4,8 @@ use std::fmt;
   pub name: String,
   pub priority: u8,
   pub supports_to_audio_data: bool,
-  pub supports_to_audio_output: bool
+  pub supports_to_audio_output: bool,
+  pub supports_speech_parameters: bool
 }
 #[derive(Debug)] pub struct Voice {
   pub synthesizer: SpeechSynthesizerData,
@@ -42,9 +43,9 @@ pub trait SpeechSynthesizer: Send + Sync {
   fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput>;
 }
 pub trait SpeechSynthesizerToAudioData: Send + Sync {
-  fn speak(&self, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError>;
+  fn speak(&self, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError>;
 }
 pub trait SpeechSynthesizerToAudioOutput: Send + Sync {
-  fn speak(&self, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str, interrupt: bool) -> Result<(), SpeechError>;
+  fn speak(&self, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> Result<(), SpeechError>;
   fn stop_speech(&self) -> Result<(), SpeechError>;
 }

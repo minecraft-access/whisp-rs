@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
-use crate::speech_synthesizer::{SpeechError,SpeechResult,SpeechSynthesizer,Voice};
+use crate::speech_synthesizer::*;
 use crate::espeak_ng::EspeakNg;
 #[cfg(windows)] use crate::sapi::Sapi;
 #[cfg(target_os = "macos")] use crate::av_speech_synthesizer::AvSpeechSynthesizer;
@@ -29,7 +29,7 @@ pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
     .collect::<Result<Vec<Vec<Voice>>, SpeechError>>()?;
   Ok(voices.into_iter().flatten().collect::<Vec<Voice>>())
 }
-pub fn speak(synthesizer: &str, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+pub fn speak(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
   match SYNTHESIZERS.lock()?.get(synthesizer) {
     None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
     Some(synthesizer) => match synthesizer.as_to_audio_data() {

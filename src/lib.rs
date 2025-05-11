@@ -1,7 +1,7 @@
 use jni::JNIEnv;
 use jni::objects::{JClass,JObject,JValue,JObjectArray,JString};
 use jni::sys::{jbyte};
-use crate::speech::{initialize, list_voices, speak};
+use crate::speech::*;
 mod speech_synthesizer;
 mod espeak_ng;
 #[cfg(windows)] mod sapi;
@@ -34,7 +34,10 @@ pub mod speech;
   let voice: String = env.get_string(&voice).unwrap().into();
   let language: String = env.get_string(&language).unwrap().into();
   let text: String = env.get_string(&text).unwrap().into();
-  let result = speak(&synthesizer, &voice, &language, rate.try_into().unwrap(), volume.try_into().unwrap(), pitch.try_into().unwrap(), &text).unwrap();
+  let rate = Some(rate.try_into().unwrap());
+  let volume = Some(volume.try_into().unwrap());
+  let pitch = Some(pitch.try_into().unwrap());
+  let result = speak(&synthesizer, &voice, &language, rate, volume, pitch, &text).unwrap();
   let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
   let speech_result_class = env.find_class("dev/emassey0135/audionavigation/client/speech/SpeechResult").unwrap();
   env.new_object(&speech_result_class, "([BBI)V", &[JValue::Object(&buffer), JValue::Byte(result.sample_format as i8), JValue::Int(result.sample_rate.try_into().unwrap())]).unwrap()
