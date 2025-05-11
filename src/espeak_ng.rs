@@ -2,12 +2,16 @@
 use std::os::raw::{c_char,c_short,c_int};
 use std::ffi::{c_void,CStr,CString};
 use lazy_static::lazy_static;
-use std::cell::Cell;
+use std::cell::{Cell,RefCell};
 use std::sync::Mutex;
 use std::iter::once;
+use rodio::{buffer::SamplesBuffer,OutputStream,Sink};
 use crate::speech_synthesizer::*;
 lazy_static! {
   static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::default()));
+}
+thread_local! {
+  static OUTPUT_STREAM: RefCell<Option<OutputStream>> = RefCell::new(None);
 }
 fn handle_espeak_error(error: espeak_ERROR) -> Result<(), SpeechError> {
   match error {
@@ -15,18 +19,23 @@ fn handle_espeak_error(error: espeak_ERROR) -> Result<(), SpeechError> {
     error => Err(SpeechError { message: format!("eSpeak-NG error code: {}", error) })
   }
 }
-#[derive(Debug)] pub struct EspeakNg {
-  sample_rate: u32
+pub struct EspeakNg {
+  sample_rate: u32,
+  sink: Sink
 }
 impl SpeechSynthesizer for EspeakNg {
   fn new() -> Result<Self, SpeechError> {
     let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
     let path_cstr = CString::new(".")?;
-    let result = EspeakNg { sample_rate: unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? }};
+    let sample_rate: u32 = unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into().unwrap() };
+    let (output_stream, output_stream_handle) = OutputStream::try_default()?;
+    let sink = Sink::try_new(&output_stream_handle)?;
+    OUTPUT_STREAM.with(|cell| *cell.borrow_mut() = Some(output_stream));
+    let result = EspeakNg { sample_rate, sink };
     Ok(result)
   }
   fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData { name: "eSpeak NG".to_owned(), priority: 3, supports_to_audio_data: true, supports_to_audio_output: false, supports_speech_parameters: true }
+    SpeechSynthesizerData { name: "eSpeak NG".to_owned(), priority: 3, supports_to_audio_data: true, supports_to_audio_output: true, supports_speech_parameters: true }
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     let mut voice_spec = espeak_VOICE { name: std::ptr::null(), languages: std::ptr::null(), identifier: std::ptr::null(), gender: 0, age: 0, variant: 0, xx1: 0, score: 0, spare: std::ptr::null_mut() };
@@ -89,7 +98,7 @@ impl SpeechSynthesizer for EspeakNg {
     Some(self)
   }
   fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
-    None
+    Some(self)
   }
 }
 impl SpeechSynthesizerToAudioData for EspeakNg {
@@ -115,6 +124,44 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
     handle_espeak_error(unsafe { espeak_Synth(text_cstr.as_ptr() as *const c_void, text_cstr.count_bytes(), position, position_type, end_position, flags, identifier, user_data) })?;
     let result = BUFFER.lock().unwrap().take();
     Ok(SpeechResult { pcm: result, sample_format: SampleFormat::S16, sample_rate: self.sample_rate })
+  }
+}
+impl SpeechSynthesizerToAudioOutput for EspeakNg {
+  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> Result<(), SpeechError> {
+    let voice_cstr = CString::new(voice)?;
+    handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
+    let rate = rate.unwrap_or(50) as f64;
+    let rate = (rate/100.0)*((espeakRATE_MAXIMUM-espeakRATE_MINIMUM) as f64)+(espeakRATE_MINIMUM as f64);
+    let rate = (rate.round()) as i32;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRATE, rate, 0) })?;
+    let volume = volume.unwrap_or(100) as i32;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, volume*2, 0) })?;
+    let pitch = pitch.unwrap_or(50) as i32;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch, 0) })?;
+    unsafe { espeak_SetSynthCallback(Some(synth_callback)) };
+    let text_cstr = CString::new(text)?;
+    let position = 0u32;
+    let position_type: espeak_POSITION_TYPE = 0;
+    let end_position = 0u32;
+    let flags = espeakCHARS_AUTO;
+    let identifier = std::ptr::null_mut();
+    let user_data = std::ptr::null_mut();
+    handle_espeak_error(unsafe { espeak_Synth(text_cstr.as_ptr() as *const c_void, text_cstr.count_bytes(), position, position_type, end_position, flags, identifier, user_data) })?;
+    let buffer = BUFFER.lock().unwrap().take();
+    let buffer = buffer
+      .chunks_exact(2)
+      .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+      .collect::<Vec<i16>>();
+    let source = SamplesBuffer::new(1, self.sample_rate, buffer);
+    if interrupt {
+      self.sink.stop();
+    };
+    self.sink.append(source);
+    Ok(())
+  }
+  fn stop_speech(&self) -> Result<(), SpeechError> {
+    self.sink.stop();
+    Ok(())
   }
 }
 unsafe extern "C" fn synth_callback(wav: *mut c_short, sample_count: c_int, _events: *mut espeak_EVENT) -> c_int {
