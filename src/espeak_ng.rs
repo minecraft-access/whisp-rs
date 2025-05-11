@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::sync::Mutex;
 use std::iter::once;
-use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,SpeechSynthesizerToAudioData,SpeechSynthesizerToAudioOutput,Voice};
+use crate::speech_synthesizer::*;
 lazy_static! {
   static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::default()));
 }
@@ -25,8 +25,8 @@ impl SpeechSynthesizer for EspeakNg {
     let result = EspeakNg { sample_rate: unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? }};
     Ok(result)
   }
-  fn name(&self) -> String {
-    "eSpeak NG".to_owned()
+  fn data(&self) -> SpeechSynthesizerData {
+    SpeechSynthesizerData { name: "eSpeak NG".to_owned(), priority: 3, supports_to_audio_data: true, supports_to_audio_output: false }
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     let mut voice_spec = espeak_VOICE { name: std::ptr::null(), languages: std::ptr::null(), identifier: std::ptr::null(), gender: 0, age: 0, variant: 0, xx1: 0, score: 0, spare: std::ptr::null_mut() };
@@ -71,14 +71,18 @@ impl SpeechSynthesizer for EspeakNg {
         languages_ptr_copy = languages_ptr_copy.add(1);
       };
       let language = languages.into_iter().min_by_key(|tuple| tuple.0);
-      (name, identifier, language.unwrap_or((0, "none".to_owned())).1)
+      let language = match language {
+        None => vec!(),
+        Some(language) => vec!(language.1)
+      };
+      (name, identifier, language)
     })
-    .collect::<Vec<(String, String, String)>>() };
-    let variants = voices.iter().filter(|voice| voice.2=="variant");
-    let main_voices = voices.iter().filter(|voice| voice.2!="variant");
+    .collect::<Vec<(String, String, Vec<String>)>>() };
+    let variants = voices.iter().filter(|voice| voice.2.first().map_or(false, |value| value=="variant"));
+    let main_voices = voices.iter().filter(|voice| voice.2.first().map_or(false, |value| value!="variant"));
     let voices = main_voices.flat_map(|voice|
-      once(Voice { synthesizer: self.name(), display_name: voice.0.clone(), name: voice.0.clone(), language: voice.2.clone() })
-        .chain(variants.clone().map(move |variant| Voice { synthesizer: self.name(), display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), language: voice.2.clone() })));
+      once(Voice { synthesizer: self.data(), display_name: voice.0.clone(), name: voice.0.clone(), languages: voice.2.clone() })
+        .chain(variants.clone().map(move |variant| Voice { synthesizer: self.data(), display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), languages: voice.2.clone() })));
     Ok(voices.collect::<Vec<Voice>>())
   }
   fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {

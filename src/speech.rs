@@ -11,14 +11,14 @@ lazy_static! {
 pub fn initialize() -> Result<(), SpeechError> {
   let mut synthesizers = SYNTHESIZERS.lock()?;
   let espeak_ng = EspeakNg::new()?;
-  synthesizers.insert(espeak_ng.name(), Box::new(espeak_ng));
+  synthesizers.insert(espeak_ng.data().name, Box::new(espeak_ng));
   #[cfg(windows)] {
     let sapi = Sapi::new()?;
-    synthesizers.insert(sapi.name(), Box::new(sapi));
+    synthesizers.insert(sapi.data().name, Box::new(sapi));
   }
   #[cfg(target_os = "macos")] {
     let av_speech_synthesizer = AvSpeechSynthesizer::new()?;
-    synthesizers.insert(av_speech_synthesizer.name(), Box::new(av_speech_synthesizer));
+    synthesizers.insert(av_speech_synthesizer.data().name, Box::new(av_speech_synthesizer));
   }
   Ok(())
 }

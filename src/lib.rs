@@ -14,10 +14,10 @@ pub mod speech;
   let voices = list_voices().unwrap();
   let voice_class = env.find_class("dev/emassey0135/audionavigation/client/speech/Voice").unwrap();
   let voices = voices.into_iter().map(|voice| {
-    let synthesizer = env.new_string(&voice.synthesizer).unwrap();
+    let synthesizer = env.new_string(&voice.synthesizer.name).unwrap();
     let display_name = env.new_string(&voice.display_name).unwrap();
     let name = env.new_string(&voice.name).unwrap();
-    let language = env.new_string(&voice.language).unwrap();
+    let language = env.new_string(&voice.languages.first().map_or("none".to_owned(), |string| string.to_owned())).unwrap();
     env.new_object(&voice_class, "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", &[JValue::Object(&synthesizer), JValue::Object(&display_name), JValue::Object(&name), JValue::Object(&language)]).unwrap()
   })
   .collect::<Vec<JObject>>();

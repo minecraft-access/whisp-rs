@@ -1,10 +1,16 @@
 use std::error::Error;
 use std::fmt;
+#[derive(Debug)] pub struct SpeechSynthesizerData {
+  pub name: String,
+  pub priority: u8,
+  pub supports_to_audio_data: bool,
+  pub supports_to_audio_output: bool
+}
 #[derive(Debug)] pub struct Voice {
-  pub synthesizer: String,
+  pub synthesizer: SpeechSynthesizerData,
   pub display_name: String,
   pub name: String,
-  pub language: String
+  pub languages: Vec<String>
 }
 #[derive(Clone,Debug)] #[repr(u8)] pub enum SampleFormat {
   S16 = 0,
@@ -30,7 +36,7 @@ impl<T: Error> From<T> for SpeechError {
 }
 pub trait SpeechSynthesizer: Send + Sync {
   fn new() -> Result<Self, SpeechError> where Self: Sized;
-  fn name(&self) -> String;
+  fn data(&self) -> SpeechSynthesizerData;
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError>;
   fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData>;
   fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput>;
