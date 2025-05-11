@@ -6,7 +6,7 @@ use crate::espeak_ng::EspeakNg;
 #[cfg(windows)] use crate::sapi::Sapi;
 #[cfg(target_os = "macos")] use crate::av_speech_synthesizer::AvSpeechSynthesizer;
 lazy_static! {
-  static ref SYNTHESIZERS: Mutex<HashMap<String, Box<(dyn SpeechSynthesizer + Send)>>> = Mutex::new(HashMap::new());
+  static ref SYNTHESIZERS: Mutex<HashMap<String, Box<dyn SpeechSynthesizer>>> = Mutex::new(HashMap::new());
 }
 pub fn initialize() -> Result<(), SpeechError> {
   let mut synthesizers = SYNTHESIZERS.lock()?;
@@ -32,6 +32,9 @@ pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
 pub fn speak(synthesizer: &str, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
   match SYNTHESIZERS.lock()?.get(synthesizer) {
     None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
-    Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text)
+    Some(synthesizer) => match synthesizer.as_to_audio_data() {
+      None => return Err(SpeechError { message: "Synthesizer does not support returning audio data".to_owned() }),
+      Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text)
+    }
   }
 }

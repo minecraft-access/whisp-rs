@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::sync::Mutex;
 use std::iter::once;
-use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,Voice};
+use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,SpeechSynthesizerToAudioData,SpeechSynthesizerToAudioOutput,Voice};
 lazy_static! {
   static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::default()));
 }
@@ -71,7 +71,7 @@ impl SpeechSynthesizer for EspeakNg {
         languages_ptr_copy = languages_ptr_copy.add(1);
       };
       let language = languages.into_iter().min_by_key(|tuple| tuple.0);
-      (name, identifier, language.unwrap_or((0, "empty".to_owned())).1)
+      (name, identifier, language.unwrap_or((0, "none".to_owned())).1)
     })
     .collect::<Vec<(String, String, String)>>() };
     let variants = voices.iter().filter(|voice| voice.2=="variant");
@@ -81,6 +81,14 @@ impl SpeechSynthesizer for EspeakNg {
         .chain(variants.clone().map(move |variant| Voice { synthesizer: self.name(), display_name: voice.0.clone()+" ("+&variant.0+")", name: voice.0.clone()+"+"+&variant.1.replace("!v/", ""), language: voice.2.clone() })));
     Ok(voices.collect::<Vec<Voice>>())
   }
+  fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
+    Some(self)
+  }
+  fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
+    None
+  }
+}
+impl SpeechSynthesizerToAudioData for EspeakNg {
   fn speak(&self, voice: &str, _language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
     let voice_cstr = CString::new(voice)?;
     handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;

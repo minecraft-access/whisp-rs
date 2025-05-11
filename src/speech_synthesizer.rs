@@ -28,9 +28,17 @@ impl<T: Error> From<T> for SpeechError {
     SpeechError { message: error.to_string() }
   }
 }
-pub trait SpeechSynthesizer {
+pub trait SpeechSynthesizer: Send + Sync {
   fn new() -> Result<Self, SpeechError> where Self: Sized;
   fn name(&self) -> String;
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError>;
+  fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData>;
+  fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput>;
+}
+pub trait SpeechSynthesizerToAudioData: Send + Sync {
   fn speak(&self, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError>;
+}
+pub trait SpeechSynthesizerToAudioOutput: Send + Sync {
+  fn speak(&self, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str, interrupt: bool) -> Result<(), SpeechError>;
+  fn stop_speech(&self) -> Result<(), SpeechError>;
 }
