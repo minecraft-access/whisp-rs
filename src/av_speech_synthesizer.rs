@@ -4,7 +4,7 @@ use objc2::rc::Retained;
 use objc2_foundation::{NSDate,NSRunLoop,NSString};
 use block2::RcBlock;
 use objc2_avf_audio::{AVAudioBuffer,AVAudioPCMBuffer,AVAudioCommonFormat,AVSpeechSynthesisVoice,AVSpeechSynthesisVoiceQuality,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
-use crate::speech_synthesizer::{SampleFormat,SpeechError,SpeechResult,SpeechSynthesizer,Voice};
+use crate::speech_synthesizer::*;
 fn run_run_loop(duration: f64) {
   unsafe {
     let run_loop = NSRunLoop::currentRunLoop();
@@ -15,15 +15,14 @@ fn run_run_loop(duration: f64) {
 #[derive(Debug)] pub struct AvSpeechSynthesizer {
   synthesizer: Mutex<Retained<AVSpeechSynthesizer>>
 }
-unsafe impl Send for AvSpeechSynthesizer {}
 impl SpeechSynthesizer for AvSpeechSynthesizer {
   fn new() -> Result<Self, SpeechError> {
     let result = AvSpeechSynthesizer { synthesizer: unsafe { Mutex::new(AVSpeechSynthesizer::new()) }};
     run_run_loop(0.1);
     Ok(result)
   }
-  fn name(&self) -> String {
-    "AVSpeechSynthesizer".to_owned()
+  fn data(&self) -> SpeechSynthesizerData {
+    SpeechSynthesizerData { name: "AVSpeechSynthesizer".to_owned(), supports_to_audio_data: true, supports_to_audio_output: false, supports_speech_parameters: true }
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     unsafe {
@@ -31,23 +30,36 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
       let voices = AVSpeechSynthesisVoice::speechVoices();
       let voices = voices.iter()
         .map(|voice| {
-          let language = voice.language().to_string().to_lowercase();
-          let identifier = voice.identifier().to_string();
-          let name = voice.name().to_string();
+          let languages = vec!(voice.language().to_string().to_lowercase());
+          let name = voice.identifier().to_string();
+          let display_name = voice.name().to_string();
           let quality = voice.quality();
-          let name = match quality {
-            AVSpeechSynthesisVoiceQuality::Enhanced => name+" (Enhanced)",
-            AVSpeechSynthesisVoiceQuality::Premium => name+" (Premium)",
-            _ => name,
+          let display_name = match quality {
+            AVSpeechSynthesisVoiceQuality::Enhanced => display_name+" (Enhanced)",
+            AVSpeechSynthesisVoiceQuality::Premium => display_name+" (Premium)",
+            _ => display_name,
           };
-          Voice { synthesizer: self.name(), display_name: name, name: identifier, language }
+          let priority: u8 = match quality {
+            AVSpeechSynthesisVoiceQuality::Premium => 1,
+            AVSpeechSynthesisVoiceQuality::Enhanced => 2,
+            _ => 3,
+          };
+          Voice { synthesizer: self.data(), display_name, name, languages, priority }
         })
         .collect::<Vec<Voice>>();
       run_run_loop(0.1);
       Ok(voices)
     }
   }
-  fn speak(&self, voice: &str, _language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> Result<SpeechResult, SpeechError> {
+  fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
+    Some(self)
+  }
+  fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
+    None
+  }
+}
+impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
+  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
     unsafe {
       run_run_loop(0.1);
       let text = NSString::from_str(text);
@@ -57,16 +69,16 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
       utterance.setVoice(Some(&voice));
       let minimum_rate: f32 = AVSpeechUtteranceMinimumSpeechRate;
       let maximum_rate: f32 = AVSpeechUtteranceMaximumSpeechRate;
-      let rate = rate as f32;
+      let rate = rate.unwrap_or(50) as f32;
       let rate = (rate/100.0)*(maximum_rate-minimum_rate)+minimum_rate;
       utterance.setRate(rate);
-      let pitch = pitch as f32;
+      let volume = volume.unwrap_or(100) as f32;
+      let volume = volume/100.0;
+      utterance.setVolume(volume);
+      let pitch = pitch.unwrap_or(50) as f32;
       let pitch = pitch/100.0;
       let pitch = if pitch<0.5 { pitch*2.0*0.75+0.25 } else { pitch*2.0 };
       utterance.setPitchMultiplier(pitch);
-      let volume = volume as f32;
-      let volume = volume/100.0;
-      utterance.setVolume(volume);
       let pcm: Arc<RwLock<Vec<u8>>> = Arc::new(RwLock::new(Vec::new()));
       let pcm2 = pcm.clone();
       let sample_format: Arc<OnceLock<SampleFormat>> = Arc::new(OnceLock::new());
