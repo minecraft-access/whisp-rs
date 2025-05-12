@@ -18,7 +18,7 @@ fn handle_espeak_error(error: espeak_ERROR) -> Result<(), SpeechError> {
 }
 pub struct EspeakNg {
   sample_rate: u32,
-  output_stream: OutputStream,
+  _output_stream: OutputStream,
   sink: Sink
 }
 impl SpeechSynthesizer for EspeakNg {
@@ -26,9 +26,9 @@ impl SpeechSynthesizer for EspeakNg {
     let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
     let path_cstr = CString::new(".")?;
     let sample_rate: u32 = unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into().unwrap() };
-    let (output_stream, output_stream_handle) = OutputStream::try_default()?;
+    let (_output_stream, output_stream_handle) = OutputStream::try_default()?;
     let sink = Sink::try_new(&output_stream_handle)?;
-    let result = EspeakNg { sample_rate, output_stream, sink };
+    let result = EspeakNg { sample_rate, _output_stream, sink };
     Ok(result)
   }
   fn data(&self) -> SpeechSynthesizerData {
