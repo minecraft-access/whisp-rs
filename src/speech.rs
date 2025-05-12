@@ -29,12 +29,30 @@ pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
     .collect::<Result<Vec<Vec<Voice>>, SpeechError>>()?;
   Ok(voices.into_iter().flatten().collect::<Vec<Voice>>())
 }
-pub fn speak(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
+pub fn speak_to_audio_data(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
   match SYNTHESIZERS.lock()?.get(synthesizer) {
     None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
     Some(synthesizer) => match synthesizer.as_to_audio_data() {
       None => return Err(SpeechError { message: "Synthesizer does not support returning audio data".to_owned() }),
       Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text)
+    }
+  }
+}
+pub fn speak_to_audio_output(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> Result<(), SpeechError> {
+  match SYNTHESIZERS.lock()?.get(synthesizer) {
+    None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
+    Some(synthesizer) => match synthesizer.as_to_audio_output() {
+      None => return Err(SpeechError { message: "Synthesizer does not support speaking to audio output".to_owned() }),
+      Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text, interrupt)
+    }
+  }
+}
+pub fn stop_speech(synthesizer: &str) -> Result<(), SpeechError> {
+  match SYNTHESIZERS.lock()?.get(synthesizer) {
+    None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
+    Some(synthesizer) => match synthesizer.as_to_audio_output() {
+      None => return Err(SpeechError { message: "Synthesizer does not support speaking to audio output".to_owned() }),
+      Some(synthesizer) => synthesizer.stop_speech()
     }
   }
 }
