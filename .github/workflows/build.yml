@@ -40,7 +40,12 @@ jobs:
           targets: ${{ matrix.platform.target }}
       - name: Build library
         run: "cargo build --release --target ${{ matrix.platform.target }}"
-      - name: capture build artifacts
+      - name: Install ALSA library and headers on Linux
+        if: runner.os == 'Linux'
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y libasound2-dev
+      - name: Capture build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.os-name }}
