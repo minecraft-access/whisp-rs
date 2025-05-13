@@ -50,9 +50,7 @@ jobs:
           targets: ${{ matrix.platform.target }}
       - name: Install ALSA library and headers on Linux
         if: runner.os == 'Linux'
-          run: |
-            sudo apt-get update
-            sudo apt-get install -y libasound2-dev
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - name: Build library
         run: "cargo build --release --target ${{ matrix.platform.target }}"
       - name: Rename library
