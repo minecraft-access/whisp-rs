@@ -1,24 +1,16 @@
 use std::ptr::NonNull;
 use std::sync::{Arc,Mutex,mpsc,OnceLock,RwLock};
 use objc2::rc::Retained;
-use objc2_foundation::{NSDate,NSRunLoop,NSString};
+use objc2_foundation::NSString;
 use block2::RcBlock;
 use objc2_avf_audio::{AVAudioBuffer,AVAudioPCMBuffer,AVAudioCommonFormat,AVSpeechBoundary,AVSpeechSynthesisVoice,AVSpeechSynthesisVoiceQuality,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
 use crate::speech_synthesizer::*;
-fn run_run_loop(duration: f64) {
-  unsafe {
-    let run_loop = NSRunLoop::currentRunLoop();
-    let date = NSDate::now().dateByAddingTimeInterval(duration);
-    run_loop.runUntilDate(&date);
-  }
-}
-#[derive(Debug)] pub struct AvSpeechSynthesizer {
+pub struct AvSpeechSynthesizer {
   synthesizer: Mutex<Retained<AVSpeechSynthesizer>>
 }
 impl SpeechSynthesizer for AvSpeechSynthesizer {
   fn new() -> Result<Self, SpeechError> {
     let result = AvSpeechSynthesizer { synthesizer: unsafe { Mutex::new(AVSpeechSynthesizer::new()) }};
-    run_run_loop(0.1);
     Ok(result)
   }
   fn data(&self) -> SpeechSynthesizerData {
@@ -26,7 +18,6 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     unsafe {
-      run_run_loop(0.1);
       let voices = AVSpeechSynthesisVoice::speechVoices();
       let voices = voices.iter()
         .map(|voice| {
@@ -47,7 +38,6 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
           Voice { synthesizer: self.data(), display_name, name, languages, priority }
         })
         .collect::<Vec<Voice>>();
-      run_run_loop(0.1);
       Ok(voices)
     }
   }
@@ -61,7 +51,6 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
 impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
   fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
     unsafe {
-      run_run_loop(0.1);
       let text = NSString::from_str(text);
       let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
       let voice = NSString::from_str(voice);
@@ -123,7 +112,6 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
       });
       self.synthesizer.lock()?.writeUtterance_toBufferCallback(&utterance, RcBlock::as_ptr(&callback));
       loop {
-        run_run_loop(0.1);
         match done_rx.try_recv() {
           Ok(()) => break,
           Err(mpsc::TryRecvError::Empty) => continue,
@@ -140,7 +128,6 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
 impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
   fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> Result<(), SpeechError> {
     unsafe {
-      run_run_loop(0.1);
       let text = NSString::from_str(text);
       let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
       let voice = NSString::from_str(voice);
