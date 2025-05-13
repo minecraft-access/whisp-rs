@@ -3,7 +3,7 @@ use std::sync::{Arc,Mutex,mpsc,OnceLock,RwLock};
 use objc2::rc::Retained;
 use objc2_foundation::{NSDate,NSRunLoop,NSString};
 use block2::RcBlock;
-use objc2_avf_audio::{AVAudioBuffer,AVAudioPCMBuffer,AVAudioCommonFormat,AVSpeechSynthesisVoice,AVSpeechSynthesisVoiceQuality,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
+use objc2_avf_audio::{AVAudioBuffer,AVAudioPCMBuffer,AVAudioCommonFormat,AVSpeechBoundary,AVSpeechSynthesisVoice,AVSpeechSynthesisVoiceQuality,AVSpeechSynthesizer,AVSpeechUtterance,AVSpeechUtteranceMaximumSpeechRate,AVSpeechUtteranceMinimumSpeechRate};
 use crate::speech_synthesizer::*;
 fn run_run_loop(duration: f64) {
   unsafe {
@@ -22,7 +22,7 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
     Ok(result)
   }
   fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData { name: "AVSpeechSynthesizer".to_owned(), supports_to_audio_data: true, supports_to_audio_output: false, supports_speech_parameters: true }
+    SpeechSynthesizerData { name: "AVSpeechSynthesizer".to_owned(), supports_to_audio_data: true, supports_to_audio_output: true, supports_speech_parameters: true }
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     unsafe {
@@ -55,7 +55,7 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
     Some(self)
   }
   fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
-    None
+    Some(self)
   }
 }
 impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
@@ -134,6 +134,41 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
       let sample_format = sample_format.get().ok_or(SpeechError { message: "Sample format not set".to_owned() })?.to_owned();
       let sample_rate = sample_rate.get().ok_or(SpeechError { message: "Sample rate not set".to_owned() })?.to_owned();
       Ok(SpeechResult { pcm, sample_format, sample_rate })
+    }
+  }
+}
+impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
+  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> Result<(), SpeechError> {
+    unsafe {
+      run_run_loop(0.1);
+      let text = NSString::from_str(text);
+      let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
+      let voice = NSString::from_str(voice);
+      let voice = AVSpeechSynthesisVoice::voiceWithIdentifier(&voice).ok_or(SpeechError { message: "No AVSpeechSynthesizer voices found with this name".to_owned() })?;
+      utterance.setVoice(Some(&voice));
+      let minimum_rate: f32 = AVSpeechUtteranceMinimumSpeechRate;
+      let maximum_rate: f32 = AVSpeechUtteranceMaximumSpeechRate;
+      let rate = rate.unwrap_or(50) as f32;
+      let rate = (rate/100.0)*(maximum_rate-minimum_rate)+minimum_rate;
+      utterance.setRate(rate);
+      let volume = volume.unwrap_or(100) as f32;
+      let volume = volume/100.0;
+      utterance.setVolume(volume);
+      let pitch = pitch.unwrap_or(50) as f32;
+      let pitch = pitch/100.0;
+      let pitch = if pitch<0.5 { pitch*2.0*0.75+0.25 } else { pitch*2.0 };
+      utterance.setPitchMultiplier(pitch);
+      if interrupt {
+        self.synthesizer.lock()?.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
+      };
+      self.synthesizer.lock()?.speakUtterance(&utterance);
+      Ok(())
+    }
+  }
+  fn stop_speech(&self) -> Result<(), SpeechError> {
+    unsafe {
+      self.synthesizer.lock()?.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
+      Ok(())
     }
   }
 }
