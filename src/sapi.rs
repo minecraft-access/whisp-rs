@@ -1,7 +1,10 @@
+use std::collections::HashSet;
 use std::ffi::c_void;
 use windows::core::*;
+use windows::Win32::Globalization::LCIDToLocaleName;
 use windows::Win32::Media::Speech::*;
 use windows::Win32::System::Com::*;
+use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
 use crate::speech_synthesizer::*;
 pub struct Sapi {
   synthesizer: ISpVoice
@@ -29,19 +32,32 @@ impl SpeechSynthesizer for Sapi {
       tokens.set_len(tokens_fetched.try_into().unwrap());
       let voices = tokens
         .into_iter()
-        .filter(|option| option.is_some())
+        .filter_map(std::convert::identity)
         .map(|token| {
-          let token = token.as_ref().unwrap();
           let name = token.GetId().unwrap().to_string().unwrap();
           let attributes = token.OpenKey(w!("Attributes")).unwrap();
           let display_name = attributes.GetStringValue(w!("Name"));
-          let language = attributes.GetStringValue(w!("Language"));
+          let lcid = attributes.GetStringValue(w!("Language"));
           let display_name = match display_name {
             Ok(display_name) => display_name.to_string().unwrap(),
             _ => "Unknown".to_owned()
           };
-          let languages = match language {
-            Ok(language) => vec!(language.to_string().unwrap()),
+          let mut seen = HashSet::new();
+          let languages = match lcid {
+            Ok(lcids) => lcids
+              .to_string()
+              .unwrap()
+              .split(';')
+              .map(|lcid| {
+                let lcid = u32::from_str_radix(lcid, 16).unwrap();
+                let mut name_vector = Vec::with_capacity(LOCALE_NAME_MAX_LENGTH.try_into().unwrap());
+                name_vector.set_len(LOCALE_NAME_MAX_LENGTH.try_into().unwrap());
+                let length = LCIDToLocaleName(lcid, Some(&mut name_vector), 0);
+                name_vector.set_len((length-1).try_into().unwrap());
+                String::from_utf16(&name_vector).unwrap().to_lowercase()
+              })
+              .filter(|language| seen.insert(language.clone()))
+              .collect::<Vec<String>>(),
             _ => vec!()
           };
           Voice { synthesizer: self.data(), display_name, name, languages, priority: 2 }
