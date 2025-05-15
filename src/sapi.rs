@@ -33,8 +33,9 @@ impl SpeechSynthesizer for Sapi {
         .map(|token| {
           let token = token.as_ref().unwrap();
           let name = token.GetId().unwrap().to_string().unwrap();
-          let display_name = token.GetStringValue(w!("Name"));
-          let language = token.GetStringValue(w!("Language"));
+          let attributes = token.OpenKey(w!("Attributes")).unwrap();
+          let display_name = attributes.GetStringValue(w!("Name"));
+          let language = attributes.GetStringValue(w!("Language"));
           let display_name = match display_name {
             Ok(display_name) => display_name.to_string().unwrap(),
             _ => "Unknown".to_owned()
