@@ -11,6 +11,29 @@ use windows::Win32::System::Com::*;
 use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
 use windows::Win32::UI::Shell::SHCreateMemStream;
 use crate::speech_synthesizer::*;
+fn set_parameters(synthesizer: &ISpVoice, voice: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> std::result::Result<String, SpeechError> {
+  unsafe {
+    let voice_token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL).unwrap();
+    let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    voice_token.SetId(SPCAT_VOICES, PWSTR::from_raw(voice.as_mut_ptr()), false)?;
+    synthesizer.SetVoice(&voice_token)?;
+    let rate = rate.unwrap_or(50) as i32;
+    let rate = (rate/5)-10;
+    synthesizer.SetRate(rate)?;
+    let volume = volume.unwrap_or(100) as u16;
+    synthesizer.SetVolume(volume)?;
+    let pitch = pitch.unwrap_or(50) as i8;
+    let pitch = (pitch/5)-10;
+    let pitch = pitch.to_string();
+    let mut writer = Writer::new(Cursor::new(Vec::new()));
+    writer.create_element("pitch")
+      .with_attribute(("absmiddle", pitch.as_str()))
+      .write_text_content(BytesText::new(text))
+      .unwrap();
+    let xml_vector = writer.into_inner().into_inner();
+    Ok(String::from_utf8(xml_vector).unwrap())
+  }
+}
 pub struct Sapi {
   stream_synthesizer: ISpVoice,
   playback_synthesizer: ISpVoice
@@ -89,25 +112,7 @@ impl SpeechSynthesizerToAudioData for Sapi {
       let format = WAVEFORMATEX { wFormatTag: WAVE_FORMAT_PCM as _, nChannels: 1, nSamplesPerSec: 44100, nAvgBytesPerSec: 88200, nBlockAlign: 2, wBitsPerSample: 16, cbSize: 0 };
       formatted_stream.SetBaseStream(&audio_stream, &format_guid, &format).unwrap();
       self.stream_synthesizer.SetOutput(&formatted_stream, false).unwrap();
-      let voice_token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL).unwrap();
-      let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
-      voice_token.SetId(SPCAT_VOICES, PWSTR::from_raw(voice.as_mut_ptr()), false)?;
-      self.stream_synthesizer.SetVoice(&voice_token)?;
-      let rate = rate.unwrap_or(50) as i32;
-      let rate = (rate/5)-10;
-      self.stream_synthesizer.SetRate(rate)?;
-      let volume = volume.unwrap_or(100) as u16;
-      self.stream_synthesizer.SetVolume(volume)?;
-      let pitch = pitch.unwrap_or(50) as i8;
-      let pitch = (pitch/5)-10;
-      let pitch = pitch.to_string();
-      let mut writer = Writer::new(Cursor::new(Vec::new()));
-      writer.create_element("pitch")
-        .with_attribute(("absmiddle", pitch.as_str()))
-        .write_text_content(BytesText::new(text))
-        .unwrap();
-      let xml_vector = writer.into_inner().into_inner();
-      let xml_string = String::from_utf8(xml_vector).unwrap();
+      let xml_string = set_parameters(&self.stream_synthesizer, voice, rate, volume, pitch, text)?;
       let mut xml = xml_string.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
       let flags = SPF_IS_XML.0 | SPF_PARSE_SAPI.0;
       self.stream_synthesizer.Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)?;
@@ -135,25 +140,7 @@ impl SpeechSynthesizerToAudioData for Sapi {
 impl SpeechSynthesizerToAudioOutput for Sapi {
   fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> std::result::Result<(), SpeechError> {
     unsafe {
-      let voice_token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL).unwrap();
-      let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
-      voice_token.SetId(SPCAT_VOICES, PWSTR::from_raw(voice.as_mut_ptr()), false)?;
-      self.playback_synthesizer.SetVoice(&voice_token)?;
-      let rate = rate.unwrap_or(50) as i32;
-      let rate = (rate/5)-10;
-      self.playback_synthesizer.SetRate(rate)?;
-      let volume = volume.unwrap_or(100) as u16;
-      self.playback_synthesizer.SetVolume(volume)?;
-      let pitch = pitch.unwrap_or(50) as i8;
-      let pitch = (pitch/5)-10;
-      let pitch = pitch.to_string();
-      let mut writer = Writer::new(Cursor::new(Vec::new()));
-      writer.create_element("pitch")
-        .with_attribute(("absmiddle", pitch.as_str()))
-        .write_text_content(BytesText::new(text))
-        .unwrap();
-      let xml_vector = writer.into_inner().into_inner();
-      let xml_string = String::from_utf8(xml_vector).unwrap();
+      let xml_string = set_parameters(&self.playback_synthesizer, voice, rate, volume, pitch, text)?;
       let mut xml = xml_string.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
       let flags = match interrupt {
         true => SPF_PURGEBEFORESPEAK.0 | SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0,
