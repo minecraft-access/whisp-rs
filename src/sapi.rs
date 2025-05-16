@@ -1,13 +1,15 @@
 use std::collections::HashSet;
-//use std::ffi::c_void;
+use std::ffi::c_void;
 use std::io::Cursor;
 use quick_xml::events::BytesText;
 use quick_xml::writer::Writer;
 use windows::core::*;
 use windows::Win32::Globalization::LCIDToLocaleName;
+use windows::Win32::Media::Audio::*;
 use windows::Win32::Media::Speech::*;
 use windows::Win32::System::Com::*;
 use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
+use windows::Win32::UI::Shell::SHCreateMemStream;
 use crate::speech_synthesizer::*;
 pub struct Sapi {
   stream_synthesizer: ISpVoice,
@@ -22,7 +24,7 @@ impl SpeechSynthesizer for Sapi {
     }
   }
   fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData { name: "SAPI 5".to_owned(), supports_to_audio_data: false, supports_to_audio_output: true, supports_speech_parameters: true }
+    SpeechSynthesizerData { name: "SAPI 5".to_owned(), supports_to_audio_data: true, supports_to_audio_output: true, supports_speech_parameters: true }
   }
   fn list_voices(&self) -> std::result::Result<Vec<Voice>, SpeechError> {
     unsafe {
@@ -72,10 +74,62 @@ impl SpeechSynthesizer for Sapi {
     }
   }
   fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
-    None
+    Some(self)
   }
   fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
     Some(self)
+  }
+}
+impl SpeechSynthesizerToAudioData for Sapi {
+  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> std::result::Result<SpeechResult, SpeechError> {
+    unsafe {
+      let audio_stream = SHCreateMemStream(None).unwrap();
+      let formatted_stream: ISpStream = CoCreateInstance(&SpStream, None, CLSCTX_ALL).unwrap();
+      let format_guid = GUID::from_u128(0xc31adbae_527f_4ff5_a230_f62bb61ff70c);
+      let format = WAVEFORMATEX { wFormatTag: WAVE_FORMAT_PCM as _, nChannels: 1, nSamplesPerSec: 44100, nAvgBytesPerSec: 88200, nBlockAlign: 2, wBitsPerSample: 16, cbSize: 0 };
+      formatted_stream.SetBaseStream(&audio_stream, &format_guid, &format).unwrap();
+      self.stream_synthesizer.SetOutput(&formatted_stream, false).unwrap();
+      let voice_token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL).unwrap();
+      let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+      voice_token.SetId(SPCAT_VOICES, PWSTR::from_raw(voice.as_mut_ptr()), false)?;
+      self.stream_synthesizer.SetVoice(&voice_token)?;
+      let rate = rate.unwrap_or(50) as i32;
+      let rate = (rate/5)-10;
+      self.stream_synthesizer.SetRate(rate)?;
+      let volume = volume.unwrap_or(100) as u16;
+      self.stream_synthesizer.SetVolume(volume)?;
+      let pitch = pitch.unwrap_or(50) as i8;
+      let pitch = (pitch/5)-10;
+      let pitch = pitch.to_string();
+      let mut writer = Writer::new(Cursor::new(Vec::new()));
+      writer.create_element("pitch")
+        .with_attribute(("absmiddle", pitch.as_str()))
+        .write_text_content(BytesText::new(text))
+        .unwrap();
+      let xml_vector = writer.into_inner().into_inner();
+      let xml_string = String::from_utf8(xml_vector).unwrap();
+      let mut xml = xml_string.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+      let flags = SPF_IS_XML.0 | SPF_PARSE_SAPI.0;
+      self.stream_synthesizer.Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)?;
+      let mut pcm: Vec<u8> = Vec::new();
+      let mut buffer: Vec<u8> = Vec::with_capacity(65536);
+      let mut bytes_read: u32 = 0;
+      formatted_stream.Seek(0, STREAM_SEEK_SET, None).unwrap();
+      loop {
+        let result = formatted_stream.Read(buffer.as_mut_ptr() as *mut c_void, 65536, Some(&mut bytes_read));
+        if bytes_read==0 {
+          break
+        }
+        buffer.set_len(bytes_read.try_into().unwrap());
+        pcm.append(&mut buffer);
+        match result.ok() {
+          Ok(()) => {},
+          Err(_) => break
+        };
+        buffer.clear();
+      }
+      Ok(SpeechResult { pcm, sample_format: SampleFormat::S16, sample_rate: 44100 })
+    }
   }
 }
 impl SpeechSynthesizerToAudioOutput for Sapi {
@@ -106,7 +160,7 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
         false => SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0
       };
       self.playback_synthesizer.Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)?;
-    Ok(())
+      Ok(())
     }
   }
   fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
@@ -116,51 +170,3 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
     }
   }
 }
-/*
-  fn speak(&self, voice: &str, language: &str, rate: u8, volume: u8, pitch: u8, text: &str) -> std::result::Result<SpeechResult, SpeechError> {
-    let voice = installed_voices(Some(VoiceSelector::new().name_eq(voice)), None)?
-      .filter(|voice| {
-        match voice.language() {
-          None => language=="none",
-          Some(os_string) => os_string.into_string().unwrap().to_lowercase()==language
-        }
-      })
-      .next()
-      .ok_or(SpeechError { message: "No SAPI voices found with this name and language".to_owned() })?;
-    synthesizer.set_voice(&voice)?;
-    let rate = rate as i32;
-    let rate = (rate/5)-10;
-    synthesizer.set_rate(rate)?;
-    synthesizer.set_volume(volume as u32)?;
-    let memory_stream = MemoryStream::new(None)?;
-    let audio_format = AudioFormat { sample_rate: SampleRate::Hz44100, bit_rate: BitRate::Bits16, channels: Channels::Mono };
-    let audio_stream = AudioStream::from_stream(memory_stream.try_clone()?, &audio_format)?;
-    synthesizer.set_output(SpeechOutput::Stream(audio_stream), false)?;
-    let pitch = pitch as i32;
-    let pitch = (pitch/5)-10;
-    let speech = SpeechBuilder::new()
-      .start_pitch(pitch)
-      .say(text)
-      .build();
-    synthesizer.speak(speech, None)?;
-    let mut pcm: Vec<u8> = Vec::new();
-    let mut buffer: Vec<u8> = Vec::with_capacity(65536);
-    let mut bytes_read: u32 = 0;
-    let stream: IStream = memory_stream.into();
-    unsafe { stream.Seek(0, STREAM_SEEK_SET)? };
-    loop {
-      let result = unsafe { stream.Read(buffer.as_mut_ptr() as *mut c_void, 65536, &mut bytes_read) };
-      if bytes_read==0 {
-        break
-      }
-      unsafe { buffer.set_len(bytes_read.try_into()?) };
-      pcm.append(&mut buffer);
-      buffer.clear();
-      match result {
-        Ok(()) => {},
-        Err(_) => break
-      };
-    }
-    Ok(SpeechResult { pcm, sample_format: SampleFormat::S16, sample_rate: 44100 })
-  }
-*/
