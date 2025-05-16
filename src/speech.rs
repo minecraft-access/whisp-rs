@@ -5,6 +5,7 @@ use std::thread;
 use crate::speech_synthesizer::*;
 use crate::espeak_ng::EspeakNg;
 #[cfg(windows)] use crate::sapi::Sapi;
+#[cfg(windows)] use crate::one_core::OneCore;
 #[cfg(target_os = "macos")] use crate::av_speech_synthesizer::AvSpeechSynthesizer;
 thread_local! {
   static SYNTHESIZERS: RefCell<HashMap<String, Box<dyn SpeechSynthesizer>>> = RefCell::new(HashMap::new());
@@ -36,6 +37,8 @@ pub fn initialize() -> Result<(), SpeechError> {
       #[cfg(windows)] {
         let sapi = Sapi::new()?;
         synthesizers.insert(sapi.data().name, Box::new(sapi));
+        let one_core = OneCore::new()?;
+        synthesizers.insert(one_core.data().name, Box::new(one_core));
       }
       #[cfg(target_os = "macos")] {
         let av_speech_synthesizer = AvSpeechSynthesizer::new()?;

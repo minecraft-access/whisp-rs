@@ -21,7 +21,7 @@ objc2-foundation = { version = "0.3.1", default-features = false, features = ["s
 objc2-avf-audio = { version = "0.3.1", default-features = false, features = ["AVAudioBuffer", "AVAudioFormat", "AVAudioTypes", "AVSpeechSynthesis", "block2", "objc2-core-audio-types", "std"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61.1", features = ["Win32_Globalization", "Win32_Media_Audio", "Win32_Media_Speech", "Win32_System_Com", "Win32_System_SystemServices", "Win32_UI_Shell"] }
+windows = { version = "0.61.1", features = ["Media_SpeechSynthesis", "Win32_Globalization", "Win32_Media_Audio", "Win32_Media_Speech", "Win32_System_Com", "Win32_System_SystemServices", "Win32_UI_Shell"] }
 quick-xml = "0.37.5"
 
 [lib]
