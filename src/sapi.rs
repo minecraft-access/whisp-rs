@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::ffi::c_void;
+//use std::ffi::c_void;
 use windows::core::*;
 use windows::Win32::Globalization::LCIDToLocaleName;
 use windows::Win32::Media::Speech::*;
@@ -76,7 +76,7 @@ impl SpeechSynthesizer for Sapi {
   }
 }
 impl SpeechSynthesizerToAudioOutput for Sapi {
-  fn speak(&self, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> std::result::Result<(), SpeechError> {
+  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, _pitch: Option<u8>, text: &str, interrupt: bool) -> std::result::Result<(), SpeechError> {
     unsafe {
       let voice_token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL).unwrap();
       let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
@@ -88,12 +88,19 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
       let volume = volume.unwrap_or(100) as u16;
       self.playback_synthesizer.SetVolume(volume)?;
       let mut text = text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
-      self.playback_synthesizer.Speak(PWSTR::from_raw(text.as_mut_ptr()), 0, None)?;
+      let flags = match interrupt {
+        true => SPF_PURGEBEFORESPEAK.0 | SPF_ASYNC.0,
+        false => SPF_ASYNC.0
+      };
+      self.playback_synthesizer.Speak(PWSTR::from_raw(text.as_mut_ptr()), flags as u32, None)?;
     Ok(())
     }
   }
   fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
-    Ok(())
+    unsafe {
+      self.playback_synthesizer.Speak(None, SPF_PURGEBEFORESPEAK.0 as u32, None)?;
+      Ok(())
+    }
   }
 }
 /*
