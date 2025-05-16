@@ -1,5 +1,8 @@
 use std::collections::HashSet;
 //use std::ffi::c_void;
+use std::io::Cursor;
+use quick_xml::events::BytesText;
+use quick_xml::writer::Writer;
 use windows::core::*;
 use windows::Win32::Globalization::LCIDToLocaleName;
 use windows::Win32::Media::Speech::*;
@@ -76,7 +79,7 @@ impl SpeechSynthesizer for Sapi {
   }
 }
 impl SpeechSynthesizerToAudioOutput for Sapi {
-  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, _pitch: Option<u8>, text: &str, interrupt: bool) -> std::result::Result<(), SpeechError> {
+  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> std::result::Result<(), SpeechError> {
     unsafe {
       let voice_token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL).unwrap();
       let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
@@ -87,12 +90,22 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
       self.playback_synthesizer.SetRate(rate)?;
       let volume = volume.unwrap_or(100) as u16;
       self.playback_synthesizer.SetVolume(volume)?;
-      let mut text = text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+      let pitch = pitch.unwrap_or(50) as i8;
+      let pitch = (pitch/5)-10;
+      let pitch = pitch.to_string();
+      let mut writer = Writer::new(Cursor::new(Vec::new()));
+      writer.create_element("pitch")
+        .with_attribute(("absmiddle", pitch.as_str()))
+        .write_text_content(BytesText::new(text))
+        .unwrap();
+      let xml_vector = writer.into_inner().into_inner();
+      let xml_string = String::from_utf8(xml_vector).unwrap();
+      let mut xml = xml_string.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
       let flags = match interrupt {
-        true => SPF_PURGEBEFORESPEAK.0 | SPF_ASYNC.0,
-        false => SPF_ASYNC.0
+        true => SPF_PURGEBEFORESPEAK.0 | SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0,
+        false => SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0
       };
-      self.playback_synthesizer.Speak(PWSTR::from_raw(text.as_mut_ptr()), flags as u32, None)?;
+      self.playback_synthesizer.Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)?;
     Ok(())
     }
   }
