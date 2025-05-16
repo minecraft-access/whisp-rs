@@ -7,17 +7,19 @@ use windows::Win32::System::Com::*;
 use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
 use crate::speech_synthesizer::*;
 pub struct Sapi {
-  synthesizer: ISpVoice
+  stream_synthesizer: ISpVoice,
+  playback_synthesizer: ISpVoice
 }
 impl SpeechSynthesizer for Sapi {
   fn new() -> std::result::Result<Self, SpeechError> {
     unsafe {
-      let synthesizer: ISpVoice = CoCreateInstance(&SpVoice, None, CLSCTX_ALL).unwrap();
-      Ok(Sapi { synthesizer })
+      let stream_synthesizer: ISpVoice = CoCreateInstance(&SpVoice, None, CLSCTX_ALL).unwrap();
+      let playback_synthesizer: ISpVoice = CoCreateInstance(&SpVoice, None, CLSCTX_ALL).unwrap();
+      Ok(Sapi { stream_synthesizer, playback_synthesizer })
     }
   }
   fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData { name: "SAPI 5".to_owned(), supports_to_audio_data: false, supports_to_audio_output: false, supports_speech_parameters: false }
+    SpeechSynthesizerData { name: "SAPI 5".to_owned(), supports_to_audio_data: false, supports_to_audio_output: true, supports_speech_parameters: true }
   }
   fn list_voices(&self) -> std::result::Result<Vec<Voice>, SpeechError> {
     unsafe {
@@ -70,7 +72,28 @@ impl SpeechSynthesizer for Sapi {
     None
   }
   fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
-    None
+    Some(self)
+  }
+}
+impl SpeechSynthesizerToAudioOutput for Sapi {
+  fn speak(&self, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> std::result::Result<(), SpeechError> {
+    unsafe {
+      let voice_token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL).unwrap();
+      let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+      voice_token.SetId(SPCAT_VOICES, PWSTR::from_raw(voice.as_mut_ptr()), false)?;
+      self.playback_synthesizer.SetVoice(&voice_token)?;
+      let rate = rate.unwrap_or(50) as i32;
+      let rate = (rate/5)-10;
+      self.playback_synthesizer.SetRate(rate)?;
+      let volume = volume.unwrap_or(100) as u16;
+      self.playback_synthesizer.SetVolume(volume)?;
+      let mut text = text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+      self.playback_synthesizer.Speak(PWSTR::from_raw(text.as_mut_ptr()), 0, None)?;
+    Ok(())
+    }
+  }
+  fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
+    Ok(())
   }
 }
 /*
