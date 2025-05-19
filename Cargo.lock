@@ -169,24 +169,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "audio-navigation-tts"
-version = "0.3.1"
-dependencies = [
- "block2",
- "build-target",
- "espeakng-sys",
- "jni",
- "lazy_static",
- "objc2",
- "objc2-avf-audio",
- "objc2-foundation",
- "quick-xml",
- "rodio",
- "ssip-client-async",
- "windows 0.61.1",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1417,6 +1399,24 @@ checksum = "33b6dd2ef9186f1f2072e409e99cd22a975331a6b3591b12c764e0e55c60d5d2"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "whisp-rs"
+version = "0.4.0"
+dependencies = [
+ "block2",
+ "build-target",
+ "espeakng-sys",
+ "jni",
+ "lazy_static",
+ "objc2",
+ "objc2-avf-audio",
+ "objc2-foundation",
+ "quick-xml",
+ "rodio",
+ "ssip-client-async",
+ "windows 0.61.1",
 ]
 
 [[package]]

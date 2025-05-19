@@ -13,33 +13,33 @@ jobs:
           - os-name: linux-x86_64
             runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            original-output-file: libaudio_navigation_tts.so
-            output-file: libaudio_navigation_tts_${{ github.ref_name }}_x86_64.so
+            original-output-file: libwhisp_rs.so
+            output-file: libwhisp_rs_${{ github.ref_name }}_x86_64.so
           - os-name: linux-aarch64
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            original-output-file: libaudio_navigation_tts.so
-            output-file: libaudio_navigation_tts_${{ github.ref_name }}_aarch64.so
+            original-output-file: libwhisp_rs.so
+            output-file: libwhisp_rs_${{ github.ref_name }}_aarch64.so
           - os-name: windows-x86_64
             runs-on: windows-2025
             target: x86_64-pc-windows-msvc
-            original-output-file: audio_navigation_tts.dll
-            output-file: audio_navigation_tts_${{ github.ref_name }}_x86_64.dll
+            original-output-file: whisp_rs.dll
+            output-file: whisp_rs_${{ github.ref_name }}_x86_64.dll
           - os-name: windows-aarch64
             runs-on: windows-2025
             target: aarch64-pc-windows-msvc
-            original-output-file: audio_navigation_tts.dll
-            output-file: audio_navigation_tts_${{ github.ref_name }}_aarch64.dll
+            original-output-file: whisp_rs.dll
+            output-file: whisp_rs_${{ github.ref_name }}_aarch64.dll
           - os-name: macos-x86_64
             runs-on: macOS-13
             target: x86_64-apple-darwin
-            original-output-file: libaudio_navigation_tts.dylib
-            output-file: libaudio_navigation_tts_${{ github.ref_name }}_x86_64.dylib
+            original-output-file: libwhisp_rs.dylib
+            output-file: libwhisp_rs_${{ github.ref_name }}_x86_64.dylib
           - os-name: macos-aarch64
             runs-on: macOS-15
             target: aarch64-apple-darwin
-            original-output-file: libaudio_navigation_tts.dylib
-            output-file: libaudio_navigation_tts_${{ github.ref_name }}_aarch64.dylib
+            original-output-file: libwhisp_rs.dylib
+            output-file: libwhisp_rs_${{ github.ref_name }}_aarch64.dylib
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout repository

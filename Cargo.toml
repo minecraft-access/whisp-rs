@@ -1,10 +1,10 @@
 [package]
-name = "audio-navigation-tts"
-version = "0.3.1"
+name = "whisp-rs"
+version = "0.4.0"
 authors = ["Elijah Massey <emassey0135@gmail.com>"]
-description = "A JNI library to expose several TTS systems to the Audio Navigation Minecraft mod"
-homepage = "https://github.com/emassey0135/audio-navigation-tts"
-repository = "https://github.com/emassey0135/audio-navigation-tts"
+description = "A TTS library that lets applications use numerous TTS engines and screen readers on multiple platforms from one simple interface"
+homepage = "https://github.com/minecraft-access/whisp-rs"
+repository = "https://github.com/minecraft-access/whisp-rs"
 license = "GPL-3.0"
 edition = "2021"
 
