@@ -55,10 +55,10 @@ impl SpeechSynthesizer for Sapi {
       let enumerator = category.EnumTokens(None, None)?;
       let mut count: u32 = 0;
       enumerator.GetCount(&mut count)?;
-      let mut tokens = Vec::with_capacity(count.try_into()?);
+      let mut tokens = Vec::with_capacity(count as _);
       let mut tokens_fetched: u32 = 0;
       enumerator.Next(count, tokens.as_mut_ptr(), Some(&mut tokens_fetched))?;
-      tokens.set_len(tokens_fetched.try_into()?);
+      tokens.set_len(tokens_fetched as _);
       let voices = tokens
         .into_iter()
         .filter_map(std::convert::identity)
@@ -78,10 +78,10 @@ impl SpeechSynthesizer for Sapi {
               .split(';')
               .map(|lcid| {
                 let lcid = u32::from_str_radix(lcid, 16)?;
-                let mut name_vector = Vec::with_capacity(LOCALE_NAME_MAX_LENGTH.try_into()?);
-                name_vector.set_len(LOCALE_NAME_MAX_LENGTH.try_into()?);
+                let mut name_vector = Vec::with_capacity(LOCALE_NAME_MAX_LENGTH as _);
+                name_vector.set_len(LOCALE_NAME_MAX_LENGTH as _);
                 let length = LCIDToLocaleName(lcid, Some(&mut name_vector), 0);
-                name_vector.set_len((length-1).try_into()?);
+                name_vector.set_len((length-1) as _);
                 Ok::<String, SpeechError>(String::from_utf16(&name_vector)?.to_lowercase())
               })
               .flatten()
@@ -125,7 +125,7 @@ impl SpeechSynthesizerToAudioData for Sapi {
         if bytes_read==0 {
           break
         }
-        buffer.set_len(bytes_read.try_into()?);
+        buffer.set_len(bytes_read as _);
         pcm.append(&mut buffer);
         match result.ok() {
           Ok(()) => {},

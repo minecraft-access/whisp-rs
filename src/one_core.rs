@@ -58,15 +58,15 @@ impl SpeechSynthesizerToAudioData for OneCore {
     let stream = result.get()?;
     stream.Seek(0)?;
     let size = stream.Size()?;
-    let buffer = Buffer::Create(size.try_into()?)?;
-    stream.ReadAsync(&buffer, size.try_into()?, InputStreamOptions::None)?.get()?;
+    let buffer = Buffer::Create(size as _)?;
+    stream.ReadAsync(&buffer, size as _, InputStreamOptions::None)?.get()?;
     let memory_buffer = Buffer::CreateMemoryBufferOverIBuffer(&buffer)?;
     let memory_buffer_reference = memory_buffer.CreateReference()?;
     let memory_buffer_accessor: IMemoryBufferByteAccess = memory_buffer_reference.cast()?;
     let mut data_ptr: *mut u8 = std::ptr::null_mut();
     let mut capacity: u32 = 0;
     unsafe { memory_buffer_accessor.GetBuffer(&mut data_ptr, &mut capacity)? };
-    let data = unsafe { std::slice::from_raw_parts_mut(data_ptr, capacity.try_into()?) };
+    let data = unsafe { std::slice::from_raw_parts_mut(data_ptr, capacity as _) };
     let data_stream = Cursor::new(data);
     let decoder = Decoder::new(data_stream)?;
     let sample_rate = decoder.sample_rate();
