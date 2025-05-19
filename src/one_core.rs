@@ -4,7 +4,6 @@ use windows::core::*;
 use windows::Media::SpeechSynthesis::SpeechSynthesizer as Synthesizer;
 use windows::Storage::Streams::*;
 use windows::Win32::System::WinRT::IMemoryBufferByteAccess;
-use crate::speech_synthesizer::SpeechSynthesizer;
 use crate::speech_synthesizer::*;
 pub struct OneCore {
   synthesizer: Synthesizer
@@ -20,11 +19,12 @@ impl SpeechSynthesizer for OneCore {
     let voices = Synthesizer::AllVoices()?
       .into_iter()
       .map(|voice| {
-        let display_name = voice.DisplayName().unwrap().to_string();
-        let name = voice.Id().unwrap().to_string();
-        let languages = vec!(voice.Language().unwrap().to_string().to_lowercase());
-        Voice { synthesizer: self.data(), display_name, name, languages, priority: 1 }
+        let display_name = voice.DisplayName()?.to_string();
+        let name = voice.Id()?.to_string();
+        let languages = vec!(voice.Language()?.to_string().to_lowercase());
+        Ok::<Voice, SpeechError>(Voice { synthesizer: self.data(), display_name, name, languages, priority: 1 })
       })
+      .flatten()
       .collect::<Vec<Voice>>();
     Ok(voices)
   }
@@ -53,20 +53,20 @@ impl SpeechSynthesizerToAudioData for OneCore {
     let volume = volume.unwrap_or(100) as f64;
     let volume = volume/100.0;
     options.SetAudioVolume(volume)?;
-    let text = HSTRING::from(text);
+    let text: HSTRING = text.into();
     let result = self.synthesizer.SynthesizeTextToStreamAsync(&text)?;
     let stream = result.get()?;
     stream.Seek(0)?;
     let size = stream.Size()?;
-    let buffer = Buffer::Create(size.try_into().unwrap())?;
-    stream.ReadAsync(&buffer, size.try_into().unwrap(), InputStreamOptions::None)?.get()?;
+    let buffer = Buffer::Create(size.try_into()?)?;
+    stream.ReadAsync(&buffer, size.try_into()?, InputStreamOptions::None)?.get()?;
     let memory_buffer = Buffer::CreateMemoryBufferOverIBuffer(&buffer)?;
     let memory_buffer_reference = memory_buffer.CreateReference()?;
     let memory_buffer_accessor: IMemoryBufferByteAccess = memory_buffer_reference.cast()?;
     let mut data_ptr: *mut u8 = std::ptr::null_mut();
     let mut capacity: u32 = 0;
     unsafe { memory_buffer_accessor.GetBuffer(&mut data_ptr, &mut capacity)? };
-    let data = unsafe { std::slice::from_raw_parts_mut(data_ptr, capacity.try_into().unwrap()) };
+    let data = unsafe { std::slice::from_raw_parts_mut(data_ptr, capacity.try_into()?) };
     let data_stream = Cursor::new(data);
     let decoder = Decoder::new(data_stream)?;
     let sample_rate = decoder.sample_rate();
