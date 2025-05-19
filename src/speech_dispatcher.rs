@@ -31,7 +31,7 @@ impl SpeechSynthesizer for SpeechDispatcher {
           .map(|voice| {
             let name = voice.name;
             let languages = match voice.language {
-              Some(language) => vec!(language.to_lowercase()),
+              Some(language) => vec!(language.to_lowercase().replace("_", "-")),
               None => Vec::new()
             };
             let display_name = name.clone()+" ("+&module+")";
