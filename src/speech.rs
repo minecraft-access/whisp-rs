@@ -7,6 +7,7 @@ use crate::speech_synthesizer::*;
 use crate::espeak_ng::EspeakNg;
 #[cfg(windows)] use crate::sapi::Sapi;
 #[cfg(windows)] use crate::one_core::OneCore;
+#[cfg(windows)] use crate::jaws::Jaws;
 #[cfg(target_os = "linux")] use crate::speech_dispatcher::SpeechDispatcher;
 #[cfg(target_os = "macos")] use crate::av_speech_synthesizer::AvSpeechSynthesizer;
 thread_local! {
@@ -47,6 +48,8 @@ pub fn initialize() -> Result<(), SpeechError> {
         synthesizers.insert(sapi.data().name, Box::new(sapi));
         let one_core = OneCore::new()?;
         synthesizers.insert(one_core.data().name, Box::new(one_core));
+        let jaws = Jaws::new()?;
+        synthesizers.insert(jaws.data().name, Box::new(jaws));
       }
       #[cfg(target_os = "linux")] {
         let speech_dispatcher = SpeechDispatcher::new()?;
