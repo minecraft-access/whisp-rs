@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::iter::once;
 use crate::speech_synthesizer::*;
 lazy_static! {
-  static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::default()));
+  static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::new()));
 }
 fn handle_espeak_error(error: espeak_ERROR) -> Result<(), SpeechError> {
   match error {
@@ -22,7 +22,7 @@ impl SpeechSynthesizer for EspeakNg {
   fn new() -> Result<Self, SpeechError> {
     let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
     let path_cstr = CString::new(".")?;
-    let sample_rate: u32 = unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into().unwrap() };
+    let sample_rate: u32 = unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? };
     let result = EspeakNg { sample_rate };
     Ok(result)
   }
@@ -40,8 +40,8 @@ impl SpeechSynthesizer for EspeakNg {
     }
     let voices_slice = unsafe { std::slice::from_raw_parts(voices_ptr, count) };
     let voices = unsafe { voices_slice.into_iter().map(|voice| {
-      let name = CStr::from_ptr((**voice).name).to_str().unwrap().to_owned();
-      let identifier = CStr::from_ptr((**voice).identifier).to_str().unwrap().to_owned();
+      let name = CStr::from_ptr((**voice).name).to_str()?.to_owned();
+      let identifier = CStr::from_ptr((**voice).identifier).to_str()?.to_owned();
       let mut languages_ptr_copy = (**voice).languages.clone();
       let mut string_start = languages_ptr_copy.clone();
       let mut priority = 0;
@@ -60,12 +60,12 @@ impl SpeechSynthesizer for EspeakNg {
             last_byte_was_priority = false;
             if byte==0 {
               last_byte_was_null = true;
-              languages.push((priority.try_into().unwrap(), CStr::from_ptr(string_start).to_str().unwrap().to_owned()));
+              languages.push((priority.try_into()?, CStr::from_ptr(string_start).to_str()?.to_owned()));
             };
           },
           (_, _, 0) => {
             last_byte_was_null = true;
-            languages.push((priority.try_into().unwrap(), CStr::from_ptr(string_start).to_str().unwrap().to_owned()));
+            languages.push((priority.try_into()?, CStr::from_ptr(string_start).to_str()?.to_owned()));
           },
           (_, _, _) => {}
         };
@@ -76,8 +76,9 @@ impl SpeechSynthesizer for EspeakNg {
         None => vec!(),
         Some(language) => vec!(language.1)
       };
-      (name, identifier, language)
+      Ok::<(String, String, Vec<String>), SpeechError>((name, identifier, language))
     })
+    .flatten()
     .collect::<Vec<(String, String, Vec<String>)>>() };
     let variants = voices.iter().filter(|voice| voice.2.first().map_or(false, |value| value=="variant"));
     let main_voices = voices.iter().filter(|voice| voice.2.first().map_or(false, |value| value!="variant"));
@@ -114,7 +115,7 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
     let identifier = std::ptr::null_mut();
     let user_data = std::ptr::null_mut();
     handle_espeak_error(unsafe { espeak_Synth(text_cstr.as_ptr() as *const c_void, text_cstr.count_bytes(), position, position_type, end_position, flags, identifier, user_data) })?;
-    let result = BUFFER.lock().unwrap().take();
+    let result = BUFFER.lock()?.take();
     Ok(SpeechResult { pcm: result, sample_format: SampleFormat::S16, sample_rate: self.sample_rate })
   }
 }
