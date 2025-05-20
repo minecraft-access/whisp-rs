@@ -2,6 +2,7 @@
 use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Com::*;
+use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
 use crate::speech_synthesizer::*;
 #[interface("123DEDB4-2CF6-429C-A2AB-CC809E5516CE")]
 unsafe trait IJawsApi: IDispatch {
@@ -17,6 +18,9 @@ pub struct Jaws {
 }
 impl SpeechSynthesizer for Jaws {
   fn new() -> std::result::Result<Self, SpeechError> {
+    if unsafe { FindWindowW(w!("JFWUI2"), None).is_err() } {
+      return Err(SpeechError { message: "JAWS is not running".to_owned() });
+    };
     let guid = GUID::from_u128(0xCCE5B1E5_B2ED_45D5_B09F_8EC54B75ABF4);
     let jaws_api = unsafe { CoCreateInstance(&guid, None, CLSCTX_ALL)? };
     Ok(Jaws { jaws_api })
