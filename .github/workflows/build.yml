@@ -19,7 +19,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             output-file: whisp_rs.dll
           - os-name: windows-aarch64
-            runs-on: windows-2025
+            runs-on: windows-11-arm
             target: aarch64-pc-windows-msvc
             output-file: whisp_rs.dll
           - os-name: macos-x86_64
