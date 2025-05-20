@@ -26,7 +26,7 @@ jobs:
             original-output-file: whisp_rs.dll
             output-file: whisp_rs_${{ github.ref_name }}_x86_64.dll
           - os-name: windows-aarch64
-            runs-on: windows-11-arm
+            runs-on: windows-2025
             target: aarch64-pc-windows-msvc
             original-output-file: whisp_rs.dll
             output-file: whisp_rs_${{ github.ref_name }}_aarch64.dll
