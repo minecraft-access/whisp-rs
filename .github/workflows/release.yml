@@ -26,7 +26,7 @@ jobs:
             original-output-file: whisp_rs.dll
             output-file: whisp_rs_${{ github.ref_name }}_x86_64.dll
           - os-name: windows-aarch64
-            runs-on: windows-2025
+            runs-on: windows-11-arm
             target: aarch64-pc-windows-msvc
             original-output-file: whisp_rs.dll
             output-file: whisp_rs_${{ github.ref_name }}_aarch64.dll
@@ -45,9 +45,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: ${{ matrix.platform.target }}
+          target: ${{ matrix.platform.target }}
       - name: Install ALSA library and headers on Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
