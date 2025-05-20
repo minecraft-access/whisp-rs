@@ -80,8 +80,10 @@ fn internal_list_voices() -> Result<Vec<Voice>, SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| {
     let voices = synthesizers.values()
       .map(|synthesizer| synthesizer.list_voices())
-      .collect::<Result<Vec<Vec<Voice>>, SpeechError>>()?;
-    Ok(voices.into_iter().flatten().collect::<Vec<Voice>>())
+      .flatten()
+      .flatten()
+      .collect::<Vec<Voice>>();
+    Ok(voices)
   })
 }
 pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
