@@ -34,33 +34,33 @@ pub fn initialize() -> Result<(), SpeechError> {
   let (operation_tx, operation_rx) = mpsc::channel();
   OPERATION_TX.set(operation_tx).unwrap();
   let (result_tx, result_rx) = mpsc::channel();
-  RESULT_RX.lock().unwrap().set(result_rx).unwrap();
+  RESULT_RX.lock()?.set(result_rx).unwrap();
   thread::spawn(move || {
-    let (output_stream, output_stream_handle) = OutputStream::try_default().unwrap();
-    let sink = Sink::try_new(&output_stream_handle).unwrap();
-    OUTPUT_STREAM.set(Some(output_stream));
-    let _result = SINK.set(sink);
-    let result = SYNTHESIZERS.with_borrow_mut(|synthesizers| {
-      let espeak_ng = EspeakNg::new()?;
-      synthesizers.insert(espeak_ng.data().name, Box::new(espeak_ng));
+    let result = {
+      let (output_stream, output_stream_handle) = OutputStream::try_default().unwrap();
+      let sink = Sink::try_new(&output_stream_handle).unwrap();
+      OUTPUT_STREAM.set(Some(output_stream));
+      let _result = SINK.set(sink);
+      let mut synthesizers: Vec<Result<Box<dyn SpeechSynthesizer>, SpeechError>> = Vec::new();
+      synthesizers.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
       #[cfg(windows)] {
-        let sapi = Sapi::new()?;
-        synthesizers.insert(sapi.data().name, Box::new(sapi));
-        let one_core = OneCore::new()?;
-        synthesizers.insert(one_core.data().name, Box::new(one_core));
-        let jaws = Jaws::new()?;
-        synthesizers.insert(jaws.data().name, Box::new(jaws));
+        synthesizers.push(Sapi::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+        synthesizers.push(OneCore::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+        synthesizers.push(Jaws::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
       }
       #[cfg(target_os = "linux")] {
-        let speech_dispatcher = SpeechDispatcher::new()?;
-        synthesizers.insert(speech_dispatcher.data().name, Box::new(speech_dispatcher));
+        synthesizers.push(SpeechDispatcher::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
       }
       #[cfg(target_os = "macos")] {
-        let av_speech_synthesizer = AvSpeechSynthesizer::new()?;
-        synthesizers.insert(av_speech_synthesizer.data().name, Box::new(av_speech_synthesizer));
+        synthesizers.push(AvSpeechSynthesizer::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
       }
+      SYNTHESIZERS.set(synthesizers
+        .into_iter()
+        .flatten()
+        .map(|synthesizer| (synthesizer.data().name, synthesizer))
+        .collect());
       Ok(())
-    });
+    };
     result_tx.send(ResultValue::Initialize(result)).unwrap();
     while let Ok(operation) = operation_rx.recv() {
       match operation {
