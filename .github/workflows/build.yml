@@ -17,10 +17,12 @@ jobs:
           - os-name: windows-x86_64
             runs-on: windows-2025
             target: x86_64-pc-windows-msvc
+            arch: x64
             output-file: whisp_rs.dll
           - os-name: windows-aarch64
             runs-on: windows-2025
             target: aarch64-pc-windows-msvc
+            arch: amd64_arm64
             output-file: whisp_rs.dll
           - os-name: macos-x86_64
             runs-on: macOS-13
@@ -41,6 +43,11 @@ jobs:
       - name: Install ALSA library and headers on Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - name: Use Visual Studio developer shell on Windows
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+        arch: ${{ matrix.platform.arch }}
       - name: Build library
         run: "cargo build --release --target ${{ matrix.platform.target }}"
       - name: Capture build artifacts
