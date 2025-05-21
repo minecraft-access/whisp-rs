@@ -47,7 +47,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
-        arch: ${{ matrix.platform.arch }}
+          arch: ${{ matrix.platform.arch }}
       - name: Build library
         run: "cargo build --release --target ${{ matrix.platform.target }}"
       - name: Capture build artifacts
