@@ -95,8 +95,7 @@ impl SpeechSynthesizer for Sapi {
               .split(';')
               .flat_map(|lcid| {
                 let lcid = u32::from_str_radix(lcid, 16)?;
-                let mut name_vector = Vec::with_capacity(LOCALE_NAME_MAX_LENGTH as _);
-                name_vector.set_len(LOCALE_NAME_MAX_LENGTH as _);
+                let mut name_vector = vec![0; LOCALE_NAME_MAX_LENGTH as _];
                 let length = LCIDToLocaleName(lcid, Some(&mut name_vector), 0);
                 name_vector.set_len((length - 1) as _);
                 Ok::<String, SpeechError>(String::from_utf16(&name_vector)?.to_lowercase())

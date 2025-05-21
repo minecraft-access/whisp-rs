@@ -19,7 +19,7 @@ use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
 thread_local! {
   static SYNTHESIZERS: RefCell<HashMap<String, Box<dyn SpeechSynthesizer>>> = RefCell::new(HashMap::new());
-  static OUTPUT_STREAM: RefCell<Option<OutputStream>> = RefCell::new(None);
+  static OUTPUT_STREAM: OnceCell<Option<OutputStream>> = const {OnceCell::new() };
 }
 static SINK: OnceLock<Sink> = OnceLock::new();
 enum Operation {
@@ -63,7 +63,7 @@ pub fn initialize() -> Result<(), SpeechError> {
     let result = {
       let (output_stream, output_stream_handle) = OutputStream::try_default().unwrap();
       let sink = Sink::try_new(&output_stream_handle).unwrap();
-      OUTPUT_STREAM.set(Some(output_stream));
+      let _result = OUTPUT_STREAM.with(|cell| cell.set(Some(output_stream)));
       let _result = SINK.set(sink);
       let mut synthesizers: Vec<Result<Box<dyn SpeechSynthesizer>, SpeechError>> = Vec::new();
       synthesizers.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
@@ -175,17 +175,13 @@ fn internal_speak_to_audio_data(
   text: &str,
 ) -> Result<SpeechResult, SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
-    None => {
-      Err(SpeechError {
-        message: "Unknown synthesizer".to_owned(),
-      })
-    }
+    None => Err(SpeechError {
+      message: "Unknown synthesizer".to_owned(),
+    }),
     Some(synthesizer) => match synthesizer.as_to_audio_data() {
-      None => {
-        Err(SpeechError {
-          message: "Synthesizer does not support returning audio data".to_owned(),
-        })
-      }
+      None => Err(SpeechError {
+        message: "Synthesizer does not support returning audio data".to_owned(),
+      }),
       Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text),
     },
   })
@@ -227,18 +223,14 @@ fn internal_speak_to_audio_output(
   interrupt: bool,
 ) -> Result<(), SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
-    None => {
-      Err(SpeechError {
-        message: "Unknown synthesizer".to_owned(),
-      })
-    }
+    None => Err(SpeechError {
+      message: "Unknown synthesizer".to_owned(),
+    }),
     Some(synthesizer) => match synthesizer.as_to_audio_output() {
       None => match synthesizer.as_to_audio_data() {
-        None => {
-          Err(SpeechError {
-            message: "Synthesizer does not support playing or returning audio".to_owned(),
-          })
-        }
+        None => Err(SpeechError {
+          message: "Synthesizer does not support playing or returning audio".to_owned(),
+        }),
         Some(synthesizer) => {
           let result = synthesizer.speak(voice, language, rate, volume, pitch, text)?;
           let buffer = result
@@ -288,11 +280,9 @@ pub fn speak_to_audio_output(
 }
 fn internal_stop_speech(synthesizer: &str) -> Result<(), SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
-    None => {
-      Err(SpeechError {
-        message: "Unknown synthesizer".to_owned(),
-      })
-    }
+    None => Err(SpeechError {
+      message: "Unknown synthesizer".to_owned(),
+    }),
     Some(synthesizer) => match synthesizer.as_to_audio_output() {
       None => {
         SINK.get().unwrap().stop();
