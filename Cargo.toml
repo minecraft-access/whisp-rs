@@ -32,4 +32,6 @@ quick-xml = "0.37.5"
 crate-type = ["cdylib", "lib"]
 
 [build-dependencies]
+bindgen = "0.71.1"
 build-target = "0.4.0"
+cc = "1.2.23"

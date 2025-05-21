@@ -7,6 +7,7 @@ mod espeak_ng;
 #[cfg(windows)] mod sapi;
 #[cfg(windows)] mod one_core;
 #[cfg(windows)] mod jaws;
+#[cfg(windows)] mod nvda;
 #[cfg(target_os = "linux")] mod speech_dispatcher;
 #[cfg(target_os = "macos")] mod av_speech_synthesizer;
 pub mod speech;
