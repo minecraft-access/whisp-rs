@@ -25,7 +25,7 @@ impl SpeechSynthesizer for OneCore {
   fn list_voices(&self) -> std::result::Result<Vec<Voice>, SpeechError> {
     let voices = Synthesizer::AllVoices()?
       .into_iter()
-      .map(|voice| {
+      .flat_map(|voice| {
         let display_name = voice.DisplayName()?.to_string();
         let name = voice.Id()?.to_string();
         let languages = vec![voice.Language()?.to_string().to_lowercase()];
@@ -37,7 +37,6 @@ impl SpeechSynthesizer for OneCore {
           priority: 1,
         })
       })
-      .flatten()
       .collect::<Vec<Voice>>();
     Ok(voices)
   }
@@ -60,8 +59,7 @@ impl SpeechSynthesizerToAudioData for OneCore {
   ) -> std::result::Result<SpeechResult, SpeechError> {
     let voice = Synthesizer::AllVoices()?
       .into_iter()
-      .filter(|voice| voice.Id().unwrap().to_string() == voice_name)
-      .next()
+      .find(|voice| voice.Id().unwrap() == voice_name)
       .ok_or(SpeechError {
         message: "Voice not found".to_owned(),
       })?;

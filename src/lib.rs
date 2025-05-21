@@ -1,3 +1,5 @@
+#![deny(clippy::all)]
+//#![deny(clippy::pedantic)]
 use crate::speech::*;
 use jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::jbyte;
@@ -45,7 +47,7 @@ pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native
       let name = env.new_string(&voice.name).unwrap();
       let language = env
         .new_string(
-          &voice
+          voice
             .languages
             .first()
             .map_or("none".to_owned(), |string| string.to_owned()),
@@ -72,12 +74,10 @@ pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native
       JObject::null(),
     )
     .unwrap();
-  let mut index: usize = 0;
-  for voice in voices {
+  for (index, voice) in voices.into_iter().enumerate() {
     env
       .set_object_array_element(&array, index.try_into().unwrap(), voice)
       .unwrap();
-    index += 1
   }
   array
 }

@@ -51,7 +51,7 @@ impl SpeechSynthesizer for EspeakNg {
       spare: std::ptr::null_mut(),
     };
     let voices_ptr = unsafe { espeak_ListVoices(&mut voice_spec) };
-    let mut voices_ptr_copy = voices_ptr.clone();
+    let mut voices_ptr_copy = voices_ptr;
     let mut count: usize = 0;
     while unsafe { !(*voices_ptr_copy).is_null() } {
       count += 1;
@@ -60,12 +60,12 @@ impl SpeechSynthesizer for EspeakNg {
     let voices_slice = unsafe { std::slice::from_raw_parts(voices_ptr, count) };
     let voices = unsafe {
       voices_slice
-        .into_iter()
-        .map(|voice| {
+        .iter()
+        .flat_map(|voice| {
           let name = CStr::from_ptr((**voice).name).to_str()?.to_owned();
           let identifier = CStr::from_ptr((**voice).identifier).to_str()?.to_owned();
-          let mut languages_ptr_copy = (**voice).languages.clone();
-          let mut string_start = languages_ptr_copy.clone();
+          let mut languages_ptr_copy = (**voice).languages;
+          let mut string_start = languages_ptr_copy;
           let mut priority = 0;
           let mut last_byte_was_null = true;
           let mut last_byte_was_priority = false;
@@ -82,7 +82,7 @@ impl SpeechSynthesizer for EspeakNg {
                 last_byte_was_priority = true
               }
               (_, true, byte) => {
-                string_start = languages_ptr_copy.clone();
+                string_start = languages_ptr_copy;
                 last_byte_was_priority = false;
                 if byte == 0 {
                   last_byte_was_null = true;
@@ -110,15 +110,14 @@ impl SpeechSynthesizer for EspeakNg {
           };
           Ok::<(String, String, Vec<String>), SpeechError>((name, identifier, language))
         })
-        .flatten()
         .collect::<Vec<(String, String, Vec<String>)>>()
     };
     let variants = voices
       .iter()
-      .filter(|voice| voice.2.first().map_or(false, |value| value == "variant"));
+      .filter(|voice| voice.2.first().is_some_and(|value| value == "variant"));
     let main_voices = voices
       .iter()
-      .filter(|voice| voice.2.first().map_or(false, |value| value != "variant"));
+      .filter(|voice| voice.2.first().is_some_and(|value| value != "variant"));
     let voices = main_voices.flat_map(|voice| {
       once(Voice {
         synthesizer: self.data(),
@@ -203,8 +202,8 @@ unsafe extern "C" fn synth_callback(
   if !wav.is_null() {
     let wav_slice = std::slice::from_raw_parts_mut(wav as *mut c_char, 2 * sample_count as usize);
     let mut wav_vec = wav_slice
-      .into_iter()
-      .map(|byte| byte.clone() as u8)
+      .iter()
+      .map(|byte| *byte as u8)
       .collect::<Vec<u8>>();
     let mut buffer = BUFFER.lock().unwrap().take();
     buffer.append(&mut wav_vec);

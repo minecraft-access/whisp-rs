@@ -152,8 +152,7 @@ fn internal_list_voices() -> Result<Vec<Voice>, SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| {
     let voices = synthesizers
       .values()
-      .map(|synthesizer| synthesizer.list_voices())
-      .flatten()
+      .flat_map(|synthesizer| synthesizer.list_voices())
       .flatten()
       .collect::<Vec<Voice>>();
     Ok(voices)
@@ -177,13 +176,13 @@ fn internal_speak_to_audio_data(
 ) -> Result<SpeechResult, SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
     None => {
-      return Err(SpeechError {
+      Err(SpeechError {
         message: "Unknown synthesizer".to_owned(),
       })
     }
     Some(synthesizer) => match synthesizer.as_to_audio_data() {
       None => {
-        return Err(SpeechError {
+        Err(SpeechError {
           message: "Synthesizer does not support returning audio data".to_owned(),
         })
       }
@@ -229,14 +228,14 @@ fn internal_speak_to_audio_output(
 ) -> Result<(), SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
     None => {
-      return Err(SpeechError {
+      Err(SpeechError {
         message: "Unknown synthesizer".to_owned(),
       })
     }
     Some(synthesizer) => match synthesizer.as_to_audio_output() {
       None => match synthesizer.as_to_audio_data() {
         None => {
-          return Err(SpeechError {
+          Err(SpeechError {
             message: "Synthesizer does not support playing or returning audio".to_owned(),
           })
         }
@@ -290,7 +289,7 @@ pub fn speak_to_audio_output(
 fn internal_stop_speech(synthesizer: &str) -> Result<(), SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
     None => {
-      return Err(SpeechError {
+      Err(SpeechError {
         message: "Unknown synthesizer".to_owned(),
       })
     }

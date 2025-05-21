@@ -78,8 +78,8 @@ impl SpeechSynthesizer for Sapi {
       tokens.set_len(tokens_fetched as _);
       let voices = tokens
         .into_iter()
-        .filter_map(std::convert::identity)
-        .map(|token| {
+        .flatten()
+        .flat_map(|token| {
           let name = token.GetId()?.to_string()?;
           let attributes = token.OpenKey(w!("Attributes"))?;
           let display_name = attributes.GetStringValue(w!("Name"));
@@ -93,7 +93,7 @@ impl SpeechSynthesizer for Sapi {
             Ok(lcids) => lcids
               .to_string()?
               .split(';')
-              .map(|lcid| {
+              .flat_map(|lcid| {
                 let lcid = u32::from_str_radix(lcid, 16)?;
                 let mut name_vector = Vec::with_capacity(LOCALE_NAME_MAX_LENGTH as _);
                 name_vector.set_len(LOCALE_NAME_MAX_LENGTH as _);
@@ -101,7 +101,6 @@ impl SpeechSynthesizer for Sapi {
                 name_vector.set_len((length - 1) as _);
                 Ok::<String, SpeechError>(String::from_utf16(&name_vector)?.to_lowercase())
               })
-              .flatten()
               .filter(|language| seen.insert(language.clone()))
               .collect::<Vec<String>>(),
             _ => vec![],
@@ -114,7 +113,6 @@ impl SpeechSynthesizer for Sapi {
             priority: 2,
           })
         })
-        .flatten()
         .collect::<Vec<Voice>>();
       Ok(voices)
     }

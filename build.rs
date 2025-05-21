@@ -19,7 +19,7 @@ fn main() {
         _ => panic!("Unsupported CPU archetecture"),
       })
       .arg("/out")
-      .arg(&format!("{}", output_dir))
+      .arg(&output_dir)
       .arg("/acf")
       .arg("nvda_controller\\nvdaController.acf")
       .arg("nvda_controller\\nvdaController.idl")
