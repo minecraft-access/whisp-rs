@@ -1,16 +1,22 @@
-use std::cell::{OnceCell,RefCell};
-use std::collections::HashMap;
-use std::sync::{mpsc,Mutex,OnceLock};
-use std::thread;
-use rodio::{buffer::SamplesBuffer,OutputStream,Sink};
-use crate::speech_synthesizer::*;
+#[cfg(target_os = "macos")]
+use crate::av_speech_synthesizer::AvSpeechSynthesizer;
 use crate::espeak_ng::EspeakNg;
-#[cfg(windows)] use crate::sapi::Sapi;
-#[cfg(windows)] use crate::one_core::OneCore;
-#[cfg(windows)] use crate::jaws::Jaws;
-#[cfg(windows)] use crate::nvda::Nvda;
-#[cfg(target_os = "linux")] use crate::speech_dispatcher::SpeechDispatcher;
-#[cfg(target_os = "macos")] use crate::av_speech_synthesizer::AvSpeechSynthesizer;
+#[cfg(windows)]
+use crate::jaws::Jaws;
+#[cfg(windows)]
+use crate::nvda::Nvda;
+#[cfg(windows)]
+use crate::one_core::OneCore;
+#[cfg(windows)]
+use crate::sapi::Sapi;
+#[cfg(target_os = "linux")]
+use crate::speech_dispatcher::SpeechDispatcher;
+use crate::speech_synthesizer::*;
+use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
+use std::cell::{OnceCell, RefCell};
+use std::collections::HashMap;
+use std::sync::{mpsc, Mutex, OnceLock};
+use std::thread;
 thread_local! {
   static SYNTHESIZERS: RefCell<HashMap<String, Box<dyn SpeechSynthesizer>>> = RefCell::new(HashMap::new());
   static OUTPUT_STREAM: RefCell<Option<OutputStream>> = RefCell::new(None);
@@ -18,16 +24,33 @@ thread_local! {
 static SINK: OnceLock<Sink> = OnceLock::new();
 enum Operation {
   ListVoices,
-  SpeakToAudioData(String, String, String, Option<u8>, Option<u8>, Option<u8>, String),
-  SpeakToAudioOutput(String, String, String, Option<u8>, Option<u8>, Option<u8>, String, bool),
-  StopSpeech(String)
+  SpeakToAudioData(
+    String,
+    String,
+    String,
+    Option<u8>,
+    Option<u8>,
+    Option<u8>,
+    String,
+  ),
+  SpeakToAudioOutput(
+    String,
+    String,
+    String,
+    Option<u8>,
+    Option<u8>,
+    Option<u8>,
+    String,
+    bool,
+  ),
+  StopSpeech(String),
 }
 enum ResultValue {
   Initialize(Result<(), SpeechError>),
   ListVoices(Result<Vec<Voice>, SpeechError>),
   SpeakToAudioData(Result<SpeechResult, SpeechError>),
   SpeakToAudioOutput(Result<(), SpeechError>),
-  StopSpeech(Result<(), SpeechError>)
+  StopSpeech(Result<(), SpeechError>),
 }
 static OPERATION_TX: OnceLock<mpsc::Sender<Operation>> = OnceLock::new();
 static RESULT_RX: Mutex<OnceCell<mpsc::Receiver<ResultValue>>> = Mutex::new(OnceCell::new());
@@ -44,43 +67,91 @@ pub fn initialize() -> Result<(), SpeechError> {
       let _result = SINK.set(sink);
       let mut synthesizers: Vec<Result<Box<dyn SpeechSynthesizer>, SpeechError>> = Vec::new();
       synthesizers.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
-      #[cfg(windows)] {
+      #[cfg(windows)]
+      {
         synthesizers.push(Sapi::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
-        synthesizers.push(OneCore::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+        synthesizers
+          .push(OneCore::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
         synthesizers.push(Jaws::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
         synthesizers.push(Nvda::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
       }
-      #[cfg(target_os = "linux")] {
-        synthesizers.push(SpeechDispatcher::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+      #[cfg(target_os = "linux")]
+      {
+        synthesizers
+          .push(SpeechDispatcher::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
       }
-      #[cfg(target_os = "macos")] {
-        synthesizers.push(AvSpeechSynthesizer::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+      #[cfg(target_os = "macos")]
+      {
+        synthesizers.push(
+          AvSpeechSynthesizer::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>),
+        );
       }
-      SYNTHESIZERS.set(synthesizers
-        .into_iter()
-        .flatten()
-        .map(|synthesizer| (synthesizer.data().name, synthesizer))
-        .collect());
+      SYNTHESIZERS.set(
+        synthesizers
+          .into_iter()
+          .flatten()
+          .map(|synthesizer| (synthesizer.data().name, synthesizer))
+          .collect(),
+      );
       Ok(())
     };
     result_tx.send(ResultValue::Initialize(result)).unwrap();
     while let Ok(operation) = operation_rx.recv() {
       match operation {
-        Operation::ListVoices => result_tx.send(ResultValue::ListVoices(internal_list_voices())).unwrap(),
-        Operation::SpeakToAudioData(synthesizer, voice, language, rate, volume, pitch, text) => result_tx.send(ResultValue::SpeakToAudioData(internal_speak_to_audio_data(&synthesizer, &voice, &language, rate, volume, pitch, &text))).unwrap(),
-        Operation::SpeakToAudioOutput(synthesizer, voice, language, rate, volume, pitch, text, interrupt) => result_tx.send(ResultValue::SpeakToAudioOutput(internal_speak_to_audio_output(&synthesizer, &voice, &language, rate, volume, pitch, &text, interrupt))).unwrap(),
-        Operation::StopSpeech(synthesizer) => result_tx.send(ResultValue::StopSpeech(internal_stop_speech(&synthesizer))).unwrap()
+        Operation::ListVoices => result_tx
+          .send(ResultValue::ListVoices(internal_list_voices()))
+          .unwrap(),
+        Operation::SpeakToAudioData(synthesizer, voice, language, rate, volume, pitch, text) => {
+          result_tx
+            .send(ResultValue::SpeakToAudioData(internal_speak_to_audio_data(
+              &synthesizer,
+              &voice,
+              &language,
+              rate,
+              volume,
+              pitch,
+              &text,
+            )))
+            .unwrap()
+        }
+        Operation::SpeakToAudioOutput(
+          synthesizer,
+          voice,
+          language,
+          rate,
+          volume,
+          pitch,
+          text,
+          interrupt,
+        ) => result_tx
+          .send(ResultValue::SpeakToAudioOutput(
+            internal_speak_to_audio_output(
+              &synthesizer,
+              &voice,
+              &language,
+              rate,
+              volume,
+              pitch,
+              &text,
+              interrupt,
+            ),
+          ))
+          .unwrap(),
+        Operation::StopSpeech(synthesizer) => result_tx
+          .send(ResultValue::StopSpeech(internal_stop_speech(&synthesizer)))
+          .unwrap(),
       };
-    };
+    }
   });
   match RESULT_RX.lock()?.get().unwrap().recv().unwrap() {
     ResultValue::Initialize(result) => result,
-    _ => panic!("Invalid initialization result")
+    _ => panic!("Invalid initialization result"),
   }
 }
 fn internal_list_voices() -> Result<Vec<Voice>, SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| {
-    let voices = synthesizers.values()
+    let voices = synthesizers
+      .values()
       .map(|synthesizer| synthesizer.list_voices())
       .flatten()
       .flatten()
@@ -92,80 +163,153 @@ pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
   OPERATION_TX.get().unwrap().send(Operation::ListVoices)?;
   match RESULT_RX.lock()?.get().unwrap().recv()? {
     ResultValue::ListVoices(result) => result,
-    _ => panic!("Received result value for other operation")
+    _ => panic!("Received result value for other operation"),
   }
 }
-fn internal_speak_to_audio_data(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
-  SYNTHESIZERS.with_borrow(|synthesizers| {
-    match synthesizers.get(synthesizer) {
-      None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
-      Some(synthesizer) => match synthesizer.as_to_audio_data() {
-        None => return Err(SpeechError { message: "Synthesizer does not support returning audio data".to_owned() }),
-        Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text)
-      }
+fn internal_speak_to_audio_data(
+  synthesizer: &str,
+  voice: &str,
+  language: &str,
+  rate: Option<u8>,
+  volume: Option<u8>,
+  pitch: Option<u8>,
+  text: &str,
+) -> Result<SpeechResult, SpeechError> {
+  SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
+    None => {
+      return Err(SpeechError {
+        message: "Unknown synthesizer".to_owned(),
+      })
     }
+    Some(synthesizer) => match synthesizer.as_to_audio_data() {
+      None => {
+        return Err(SpeechError {
+          message: "Synthesizer does not support returning audio data".to_owned(),
+        })
+      }
+      Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text),
+    },
   })
 }
-pub fn speak_to_audio_data(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> Result<SpeechResult, SpeechError> {
-  OPERATION_TX.get().unwrap().send(Operation::SpeakToAudioData(synthesizer.to_owned(), voice.to_owned(), language.to_owned(), rate, volume, pitch, text.to_owned()))?;
+pub fn speak_to_audio_data(
+  synthesizer: &str,
+  voice: &str,
+  language: &str,
+  rate: Option<u8>,
+  volume: Option<u8>,
+  pitch: Option<u8>,
+  text: &str,
+) -> Result<SpeechResult, SpeechError> {
+  OPERATION_TX
+    .get()
+    .unwrap()
+    .send(Operation::SpeakToAudioData(
+      synthesizer.to_owned(),
+      voice.to_owned(),
+      language.to_owned(),
+      rate,
+      volume,
+      pitch,
+      text.to_owned(),
+    ))?;
   match RESULT_RX.lock()?.get().unwrap().recv()? {
     ResultValue::SpeakToAudioData(result) => result,
-    _ => panic!("Received result value for other operation")
+    _ => panic!("Received result value for other operation"),
   }
 }
-fn internal_speak_to_audio_output(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> Result<(), SpeechError> {
-  SYNTHESIZERS.with_borrow(|synthesizers| {
-    match synthesizers.get(synthesizer) {
-      None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
-      Some(synthesizer) => match synthesizer.as_to_audio_output() {
-        None => {
-          match synthesizer.as_to_audio_data() {
-            None => return Err(SpeechError { message: "Synthesizer does not support playing or returning audio".to_owned() }),
-            Some(synthesizer) => {
-              let result = synthesizer.speak(voice, language, rate, volume, pitch, text)?;
-              let buffer = result.pcm
-                .chunks_exact(2)
-                .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-                .collect::<Vec<i16>>();
-              let source = SamplesBuffer::new(1, result.sample_rate, buffer);
-              if interrupt {
-                SINK.get().unwrap().stop();
-              };
-              SINK.get().unwrap().append(source);
-              Ok(())
-            }
-          }
-        },
-        Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text, interrupt)
-      }
+fn internal_speak_to_audio_output(
+  synthesizer: &str,
+  voice: &str,
+  language: &str,
+  rate: Option<u8>,
+  volume: Option<u8>,
+  pitch: Option<u8>,
+  text: &str,
+  interrupt: bool,
+) -> Result<(), SpeechError> {
+  SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
+    None => {
+      return Err(SpeechError {
+        message: "Unknown synthesizer".to_owned(),
+      })
     }
+    Some(synthesizer) => match synthesizer.as_to_audio_output() {
+      None => match synthesizer.as_to_audio_data() {
+        None => {
+          return Err(SpeechError {
+            message: "Synthesizer does not support playing or returning audio".to_owned(),
+          })
+        }
+        Some(synthesizer) => {
+          let result = synthesizer.speak(voice, language, rate, volume, pitch, text)?;
+          let buffer = result
+            .pcm
+            .chunks_exact(2)
+            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<i16>>();
+          let source = SamplesBuffer::new(1, result.sample_rate, buffer);
+          if interrupt {
+            SINK.get().unwrap().stop();
+          };
+          SINK.get().unwrap().append(source);
+          Ok(())
+        }
+      },
+      Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text, interrupt),
+    },
   })
 }
-pub fn speak_to_audio_output(synthesizer: &str, voice: &str, language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> Result<(), SpeechError> {
-  OPERATION_TX.get().unwrap().send(Operation::SpeakToAudioOutput(synthesizer.to_owned(), voice.to_owned(), language.to_owned(), rate, volume, pitch, text.to_owned(), interrupt))?;
+pub fn speak_to_audio_output(
+  synthesizer: &str,
+  voice: &str,
+  language: &str,
+  rate: Option<u8>,
+  volume: Option<u8>,
+  pitch: Option<u8>,
+  text: &str,
+  interrupt: bool,
+) -> Result<(), SpeechError> {
+  OPERATION_TX
+    .get()
+    .unwrap()
+    .send(Operation::SpeakToAudioOutput(
+      synthesizer.to_owned(),
+      voice.to_owned(),
+      language.to_owned(),
+      rate,
+      volume,
+      pitch,
+      text.to_owned(),
+      interrupt,
+    ))?;
   match RESULT_RX.lock()?.get().unwrap().recv()? {
     ResultValue::SpeakToAudioOutput(result) => result,
-    _ => panic!("Received result value for other operation")
+    _ => panic!("Received result value for other operation"),
   }
 }
 fn internal_stop_speech(synthesizer: &str) -> Result<(), SpeechError> {
-  SYNTHESIZERS.with_borrow(|synthesizers| {
-    match synthesizers.get(synthesizer) {
-      None => return Err(SpeechError { message: "Unknown synthesizer".to_owned() }),
-      Some(synthesizer) => match synthesizer.as_to_audio_output() {
-        None => {
-          SINK.get().unwrap().stop();
-          Ok(())
-        },
-        Some(synthesizer) => synthesizer.stop_speech()
-      }
+  SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
+    None => {
+      return Err(SpeechError {
+        message: "Unknown synthesizer".to_owned(),
+      })
     }
+    Some(synthesizer) => match synthesizer.as_to_audio_output() {
+      None => {
+        SINK.get().unwrap().stop();
+        Ok(())
+      }
+      Some(synthesizer) => synthesizer.stop_speech(),
+    },
   })
 }
 pub fn stop_speech(synthesizer: &str) -> Result<(), SpeechError> {
-  OPERATION_TX.get().unwrap().send(Operation::StopSpeech(synthesizer.to_owned()))?;
+  OPERATION_TX
+    .get()
+    .unwrap()
+    .send(Operation::StopSpeech(synthesizer.to_owned()))?;
   match RESULT_RX.lock()?.get().unwrap().recv()? {
     ResultValue::StopSpeech(result) => result,
-    _ => panic!("Received result value for other operation")
+    _ => panic!("Received result value for other operation"),
   }
 }

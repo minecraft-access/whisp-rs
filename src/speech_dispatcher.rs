@@ -1,20 +1,26 @@
-use std::cell::RefCell;
-use ssip_client_async::*;
 use crate::speech_synthesizer::*;
+use ssip_client_async::*;
+use std::cell::RefCell;
 pub struct SpeechDispatcher {
-  client: RefCell<Client<fifo::UnixStream>>
+  client: RefCell<Client<fifo::UnixStream>>,
 }
 impl SpeechSynthesizer for SpeechDispatcher {
   fn new() -> Result<Self, SpeechError> {
-    let mut client = fifo::Builder::new()
-      .build()?;
+    let mut client = fifo::Builder::new().build()?;
     client
       .set_client_name(ClientName::new("", "audio-navigation-tts"))?
       .check_client_name_set()?;
-    Ok(SpeechDispatcher { client: RefCell::new(client) })
+    Ok(SpeechDispatcher {
+      client: RefCell::new(client),
+    })
   }
   fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData { name: "Speech Dispatcher".to_owned(), supports_to_audio_data: false, supports_to_audio_output: true, supports_speech_parameters: true }
+    SpeechSynthesizerData {
+      name: "Speech Dispatcher".to_owned(),
+      supports_to_audio_data: false,
+      supports_to_audio_output: true,
+      supports_speech_parameters: true,
+    }
   }
   fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
     let mut client = self.client.borrow_mut();
@@ -23,7 +29,9 @@ impl SpeechSynthesizer for SpeechDispatcher {
       .receive_lines(OK_OUTPUT_MODULES_LIST_SENT)?
       .into_iter()
       .map(|module| {
-        client.set_output_module(ClientScope::Current, &module)?.check_status(OK_OUTPUT_MODULE_SET)?;
+        client
+          .set_output_module(ClientScope::Current, &module)?
+          .check_status(OK_OUTPUT_MODULE_SET)?;
         client
           .list_synthesis_voices()?
           .receive_synthesis_voices()?
@@ -31,12 +39,18 @@ impl SpeechSynthesizer for SpeechDispatcher {
           .map(|voice| {
             let name = voice.name;
             let languages = match voice.language {
-              Some(language) => vec!(language.to_lowercase().replace("_", "-")),
-              None => Vec::new()
+              Some(language) => vec![language.to_lowercase().replace("_", "-")],
+              None => Vec::new(),
             };
-            let display_name = name.clone()+" ("+&module+")";
-            let name = module.clone()+"/"+&name;
-            Ok(Voice { synthesizer: self.data(), display_name, name, languages, priority: 1 })
+            let display_name = name.clone() + " (" + &module + ")";
+            let name = module.clone() + "/" + &name;
+            Ok(Voice {
+              synthesizer: self.data(),
+              display_name,
+              name,
+              languages,
+              priority: 1,
+            })
           })
           .collect::<Result<Vec<Voice>, SpeechError>>()
       })
@@ -53,26 +67,50 @@ impl SpeechSynthesizer for SpeechDispatcher {
   }
 }
 impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
-  fn speak(&self, voice: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str, interrupt: bool) -> std::result::Result<(), SpeechError> {
+  fn speak(
+    &self,
+    voice: &str,
+    _language: &str,
+    rate: Option<u8>,
+    volume: Option<u8>,
+    pitch: Option<u8>,
+    text: &str,
+    interrupt: bool,
+  ) -> std::result::Result<(), SpeechError> {
     let mut client = self.client.borrow_mut();
     let mut split = voice.split('/');
     let output_module = split.next().unwrap();
     let voice = split.next().unwrap();
-    client.set_output_module(ClientScope::Current, output_module)?.check_status(OK_OUTPUT_MODULE_SET)?;
-    client.set_synthesis_voice(ClientScope::Current, voice)?.check_status(OK_VOICE_SET)?;
+    client
+      .set_output_module(ClientScope::Current, output_module)?
+      .check_status(OK_OUTPUT_MODULE_SET)?;
+    client
+      .set_synthesis_voice(ClientScope::Current, voice)?
+      .check_status(OK_VOICE_SET)?;
     let rate = rate.unwrap_or(50) as i8;
-    let rate = (rate*2)-100;
-    client.set_rate(ClientScope::Current, rate)?.check_status(OK_RATE_SET)?;
+    let rate = (rate * 2) - 100;
+    client
+      .set_rate(ClientScope::Current, rate)?
+      .check_status(OK_RATE_SET)?;
     let pitch = pitch.unwrap_or(50) as i8;
-    let pitch = (pitch*2)-100;
-    client.set_pitch(ClientScope::Current, pitch)?.check_status(OK_PITCH_SET)?;
+    let pitch = (pitch * 2) - 100;
+    client
+      .set_pitch(ClientScope::Current, pitch)?
+      .check_status(OK_PITCH_SET)?;
     let volume = volume.unwrap_or(50) as i8;
-    let volume = (volume*2)-100;
-    client.set_volume(ClientScope::Current, volume)?.check_status(OK_VOLUME_SET)?;
+    let volume = (volume * 2) - 100;
+    client
+      .set_volume(ClientScope::Current, volume)?
+      .check_status(OK_VOLUME_SET)?;
     if interrupt {
-      client.cancel(MessageScope::Last)?.check_status(OK_CANCELED)?;
+      client
+        .cancel(MessageScope::Last)?
+        .check_status(OK_CANCELED)?;
     };
-    let lines = text.lines().map(|line| line.to_owned()).collect::<Vec<String>>();
+    let lines = text
+      .lines()
+      .map(|line| line.to_owned())
+      .collect::<Vec<String>>();
     client
       .speak()?
       .check_receiving_data()?
@@ -81,7 +119,11 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     Ok(())
   }
   fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
-    self.client.borrow_mut().cancel(MessageScope::Last)?.check_status(OK_CANCELED)?;
+    self
+      .client
+      .borrow_mut()
+      .cancel(MessageScope::Last)?
+      .check_status(OK_CANCELED)?;
     Ok(())
   }
 }

@@ -1,19 +1,26 @@
+use crate::speech_synthesizer::*;
 use rodio::*;
 use std::io::Cursor;
 use windows::core::*;
 use windows::Media::SpeechSynthesis::SpeechSynthesizer as Synthesizer;
 use windows::Storage::Streams::*;
 use windows::Win32::System::WinRT::IMemoryBufferByteAccess;
-use crate::speech_synthesizer::*;
 pub struct OneCore {
-  synthesizer: Synthesizer
+  synthesizer: Synthesizer,
 }
 impl SpeechSynthesizer for OneCore {
   fn new() -> std::result::Result<Self, SpeechError> {
-    Ok(OneCore { synthesizer: Synthesizer::new()? })
+    Ok(OneCore {
+      synthesizer: Synthesizer::new()?,
+    })
   }
   fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData { name: "OneCore".to_owned(), supports_to_audio_data: true, supports_to_audio_output: false, supports_speech_parameters: true }
+    SpeechSynthesizerData {
+      name: "OneCore".to_owned(),
+      supports_to_audio_data: true,
+      supports_to_audio_output: false,
+      supports_speech_parameters: true,
+    }
   }
   fn list_voices(&self) -> std::result::Result<Vec<Voice>, SpeechError> {
     let voices = Synthesizer::AllVoices()?
@@ -21,8 +28,14 @@ impl SpeechSynthesizer for OneCore {
       .map(|voice| {
         let display_name = voice.DisplayName()?.to_string();
         let name = voice.Id()?.to_string();
-        let languages = vec!(voice.Language()?.to_string().to_lowercase());
-        Ok::<Voice, SpeechError>(Voice { synthesizer: self.data(), display_name, name, languages, priority: 1 })
+        let languages = vec![voice.Language()?.to_string().to_lowercase()];
+        Ok::<Voice, SpeechError>(Voice {
+          synthesizer: self.data(),
+          display_name,
+          name,
+          languages,
+          priority: 1,
+        })
       })
       .flatten()
       .collect::<Vec<Voice>>();
@@ -36,22 +49,32 @@ impl SpeechSynthesizer for OneCore {
   }
 }
 impl SpeechSynthesizerToAudioData for OneCore {
-  fn speak(&self, voice_name: &str, _language: &str, rate: Option<u8>, volume: Option<u8>, pitch: Option<u8>, text: &str) -> std::result::Result<SpeechResult, SpeechError> {
+  fn speak(
+    &self,
+    voice_name: &str,
+    _language: &str,
+    rate: Option<u8>,
+    volume: Option<u8>,
+    pitch: Option<u8>,
+    text: &str,
+  ) -> std::result::Result<SpeechResult, SpeechError> {
     let voice = Synthesizer::AllVoices()?
       .into_iter()
-      .filter(|voice| voice.Id().unwrap().to_string()==voice_name)
+      .filter(|voice| voice.Id().unwrap().to_string() == voice_name)
       .next()
-      .ok_or(SpeechError { message: "Voice not found".to_owned() })?;
+      .ok_or(SpeechError {
+        message: "Voice not found".to_owned(),
+      })?;
     self.synthesizer.SetVoice(&voice)?;
     let options = self.synthesizer.Options()?;
     let rate = rate.unwrap_or(50) as f64;
-    let rate = (rate/100.0*5.5)+0.5;
+    let rate = (rate / 100.0 * 5.5) + 0.5;
     options.SetSpeakingRate(rate)?;
     let pitch = pitch.unwrap_or(50) as f64;
-    let pitch = pitch/50.0;
+    let pitch = pitch / 50.0;
     options.SetAudioPitch(pitch)?;
     let volume = volume.unwrap_or(100) as f64;
-    let volume = volume/100.0;
+    let volume = volume / 100.0;
     options.SetAudioVolume(volume)?;
     let text: HSTRING = text.into();
     let result = self.synthesizer.SynthesizeTextToStreamAsync(&text)?;
@@ -59,7 +82,9 @@ impl SpeechSynthesizerToAudioData for OneCore {
     stream.Seek(0)?;
     let size = stream.Size()?;
     let buffer = Buffer::Create(size as _)?;
-    stream.ReadAsync(&buffer, size as _, InputStreamOptions::None)?.get()?;
+    stream
+      .ReadAsync(&buffer, size as _, InputStreamOptions::None)?
+      .get()?;
     let memory_buffer = Buffer::CreateMemoryBufferOverIBuffer(&buffer)?;
     let memory_buffer_reference = memory_buffer.CreateReference()?;
     let memory_buffer_accessor: IMemoryBufferByteAccess = memory_buffer_reference.cast()?;
@@ -73,6 +98,10 @@ impl SpeechSynthesizerToAudioData for OneCore {
     let pcm = decoder
       .flat_map(|sample| sample.to_le_bytes())
       .collect::<Vec<u8>>();
-    Ok(SpeechResult { pcm, sample_format: SampleFormat::S16, sample_rate })
+    Ok(SpeechResult {
+      pcm,
+      sample_format: SampleFormat::S16,
+      sample_rate,
+    })
   }
 }
