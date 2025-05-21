@@ -12,8 +12,11 @@ fn to_result(error: u32) -> Result<()> {
 pub struct Nvda;
 impl SpeechSynthesizer for Nvda {
   fn new() -> std::result::Result<Self, SpeechError> {
-    unsafe { to_result(nvdaController_initialize())? };
-    Ok(Nvda)
+    unsafe {
+      to_result(nvdaController_initialize())?;
+      to_result(nvdaController_testIfRunning())?;
+      Ok(Nvda)
+    }
   }
   fn data(&self) -> SpeechSynthesizerData {
     SpeechSynthesizerData { name: "NVDA".to_owned(), supports_to_audio_data: false, supports_to_audio_output: true, supports_speech_parameters: false }
