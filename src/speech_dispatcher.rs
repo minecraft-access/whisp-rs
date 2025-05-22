@@ -34,7 +34,7 @@ impl SpeechSynthesizer for SpeechDispatcher {
       .list_output_modules()?
       .receive_lines(OK_OUTPUT_MODULES_LIST_SENT)?
       .into_iter()
-      .map(|module| {
+      .flat_map(|module| {
         client
           .set_output_module(ClientScope::Current, &module)?
           .check_status(OK_OUTPUT_MODULE_SET)?;
@@ -60,7 +60,6 @@ impl SpeechSynthesizer for SpeechDispatcher {
           })
           .collect::<Result<Vec<Voice>, SpeechError>>()
       })
-      .flatten()
       .flatten()
       .collect();
     Ok(voices)
