@@ -82,7 +82,6 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     text: &str,
     interrupt: bool,
   ) -> std::result::Result<(), SpeechError> {
-    let mut client = self.client.borrow_mut();
     let voice = match (voice, language) {
       (None, None) => None,
       (Some(voice), _) => Some(voice.to_owned()),
@@ -97,6 +96,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
           .name,
       ),
     };
+    let mut client = self.client.borrow_mut();
     match voice {
       None => {
         client
