@@ -9,6 +9,55 @@ use objc2_avf_audio::{
 use objc2_foundation::NSString;
 use std::ptr::NonNull;
 use std::sync::{mpsc, Arc, Mutex, OnceLock, RwLock};
+fn set_parameters(
+  voice: Option<&str>,
+  language: Option<&str>,
+  rate: Option<u8>,
+  volume: Option<u8>,
+  pitch: Option<u8>,
+  text: &str,
+) -> Result<Retained<AVSpeechUtterance>, SpeechError> {
+  unsafe {
+    let text = NSString::from_str(text);
+    let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
+    match (voice, language) {
+      (None, None) => {}
+      (Some(voice), _) => {
+        let voice = NSString::from_str(voice);
+        let voice = AVSpeechSynthesisVoice::voiceWithIdentifier(&voice).ok_or(SpeechError {
+          message: "No AVSpeechSynthesizer voices found with this name".to_owned(),
+        })?;
+        utterance.setVoice(Some(&voice));
+      }
+      (_, Some(language)) => {
+        let voice = AVSpeechSynthesisVoice::speechVoices()
+          .into_iter()
+          .find(|voice| voice.language().to_string().to_lowercase() == language)
+          .ok_or(SpeechError {
+            message: "Voice not found with this language".to_owned(),
+          })?;
+        utterance.setVoice(Some(&voice));
+      }
+    };
+    let minimum_rate: f32 = AVSpeechUtteranceMinimumSpeechRate;
+    let maximum_rate: f32 = AVSpeechUtteranceMaximumSpeechRate;
+    let rate = rate.unwrap_or(50) as f32;
+    let rate = (rate / 100.0) * (maximum_rate - minimum_rate) + minimum_rate;
+    utterance.setRate(rate);
+    let volume = volume.unwrap_or(100) as f32;
+    let volume = volume / 100.0;
+    utterance.setVolume(volume);
+    let pitch = pitch.unwrap_or(50) as f32;
+    let pitch = pitch / 100.0;
+    let pitch = if pitch < 0.5 {
+      pitch * 2.0 * 0.75 + 0.25
+    } else {
+      pitch * 2.0
+    };
+    utterance.setPitchMultiplier(pitch);
+    Ok(utterance)
+  }
+}
 pub struct AvSpeechSynthesizer {
   synthesizer: Mutex<Retained<AVSpeechSynthesizer>>,
 }
@@ -31,7 +80,7 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
     unsafe {
       let voices = AVSpeechSynthesisVoice::speechVoices();
       let voices = voices
-        .iter()
+        .into_iter()
         .map(|voice| {
           let languages = vec![voice.language().to_string().to_lowercase()];
           let name = voice.identifier().to_string();
@@ -69,37 +118,15 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
 impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
   fn speak(
     &self,
-    voice: &str,
-    _language: &str,
+    voice: Option<&str>,
+    language: Option<&str>,
     rate: Option<u8>,
     volume: Option<u8>,
     pitch: Option<u8>,
     text: &str,
   ) -> Result<SpeechResult, SpeechError> {
     unsafe {
-      let text = NSString::from_str(text);
-      let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
-      let voice = NSString::from_str(voice);
-      let voice = AVSpeechSynthesisVoice::voiceWithIdentifier(&voice).ok_or(SpeechError {
-        message: "No AVSpeechSynthesizer voices found with this name".to_owned(),
-      })?;
-      utterance.setVoice(Some(&voice));
-      let minimum_rate: f32 = AVSpeechUtteranceMinimumSpeechRate;
-      let maximum_rate: f32 = AVSpeechUtteranceMaximumSpeechRate;
-      let rate = rate.unwrap_or(50) as f32;
-      let rate = (rate / 100.0) * (maximum_rate - minimum_rate) + minimum_rate;
-      utterance.setRate(rate);
-      let volume = volume.unwrap_or(100) as f32;
-      let volume = volume / 100.0;
-      utterance.setVolume(volume);
-      let pitch = pitch.unwrap_or(50) as f32;
-      let pitch = pitch / 100.0;
-      let pitch = if pitch < 0.5 {
-        pitch * 2.0 * 0.75 + 0.25
-      } else {
-        pitch * 2.0
-      };
-      utterance.setPitchMultiplier(pitch);
+      let utterance = set_parameters(voice, language, rate, volume, pitch, text)?;
       let pcm: Arc<RwLock<Vec<u8>>> = Arc::new(RwLock::new(Vec::new()));
       let pcm2 = pcm.clone();
       let sample_format: Arc<OnceLock<SampleFormat>> = Arc::new(OnceLock::new());
@@ -148,17 +175,7 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
         .synthesizer
         .lock()?
         .writeUtterance_toBufferCallback(&utterance, RcBlock::as_ptr(&callback));
-      loop {
-        match done_rx.try_recv() {
-          Ok(()) => break,
-          Err(mpsc::TryRecvError::Empty) => continue,
-          Err(mpsc::TryRecvError::Disconnected) => {
-            return Err(SpeechError {
-              message: "Channel disconnected".to_owned(),
-            })
-          }
-        };
-      }
+      done_rx.recv()?;
       let pcm = pcm.read()?.clone();
       let sample_format = sample_format
         .get()
@@ -183,8 +200,8 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
 impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
   fn speak(
     &self,
-    voice: &str,
-    _language: &str,
+    voice: Option<&str>,
+    language: Option<&str>,
     rate: Option<u8>,
     volume: Option<u8>,
     pitch: Option<u8>,
@@ -192,29 +209,7 @@ impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
     interrupt: bool,
   ) -> Result<(), SpeechError> {
     unsafe {
-      let text = NSString::from_str(text);
-      let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
-      let voice = NSString::from_str(voice);
-      let voice = AVSpeechSynthesisVoice::voiceWithIdentifier(&voice).ok_or(SpeechError {
-        message: "No AVSpeechSynthesizer voices found with this name".to_owned(),
-      })?;
-      utterance.setVoice(Some(&voice));
-      let minimum_rate: f32 = AVSpeechUtteranceMinimumSpeechRate;
-      let maximum_rate: f32 = AVSpeechUtteranceMaximumSpeechRate;
-      let rate = rate.unwrap_or(50) as f32;
-      let rate = (rate / 100.0) * (maximum_rate - minimum_rate) + minimum_rate;
-      utterance.setRate(rate);
-      let volume = volume.unwrap_or(100) as f32;
-      let volume = volume / 100.0;
-      utterance.setVolume(volume);
-      let pitch = pitch.unwrap_or(50) as f32;
-      let pitch = pitch / 100.0;
-      let pitch = if pitch < 0.5 {
-        pitch * 2.0 * 0.75 + 0.25
-      } else {
-        pitch * 2.0
-      };
-      utterance.setPitchMultiplier(pitch);
+      let utterance = set_parameters(voice, language, rate, volume, pitch, text)?;
       if interrupt {
         self
           .synthesizer
