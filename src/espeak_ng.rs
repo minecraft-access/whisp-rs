@@ -19,6 +19,7 @@ fn handle_espeak_error(error: espeak_ERROR) -> Result<(), SpeechError> {
   }
 }
 pub struct EspeakNg {
+  default_voice: String,
   sample_rate: u32,
 }
 impl SpeechSynthesizer for EspeakNg {
@@ -27,7 +28,12 @@ impl SpeechSynthesizer for EspeakNg {
     let path_cstr = CString::new(".")?;
     let sample_rate: u32 =
       unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? };
-    let result = EspeakNg { sample_rate };
+    let voice = unsafe { espeak_GetCurrentVoice() };
+    let default_voice = unsafe { CStr::from_ptr((*voice).name).to_str()?.to_owned() };
+    let result = EspeakNg {
+      default_voice,
+      sample_rate,
+    };
     Ok(result)
   }
   fn data(&self) -> SpeechSynthesizerData {
@@ -146,15 +152,38 @@ impl SpeechSynthesizer for EspeakNg {
 impl SpeechSynthesizerToAudioData for EspeakNg {
   fn speak(
     &self,
-    voice: &str,
-    _language: &str,
+    voice: Option<&str>,
+    language: Option<&str>,
     rate: Option<u8>,
     volume: Option<u8>,
     pitch: Option<u8>,
     text: &str,
   ) -> Result<SpeechResult, SpeechError> {
-    let voice_cstr = CString::new(voice)?;
-    handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
+    match (voice, language) {
+      (None, None) => {
+        let voice_cstr = CString::new(&*self.default_voice)?;
+        handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
+      }
+      (Some(voice), _) => {
+        let voice_cstr = CString::new(voice)?;
+        handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
+      }
+      (_, Some(language)) => {
+        let language_cstr = CString::new(language)?;
+        let mut voice_spec = espeak_VOICE {
+          name: std::ptr::null(),
+          languages: language_cstr.as_ptr(),
+          identifier: std::ptr::null(),
+          gender: 0,
+          age: 0,
+          variant: 0,
+          xx1: 0,
+          score: 0,
+          spare: std::ptr::null_mut(),
+        };
+        handle_espeak_error(unsafe { espeak_SetVoiceByProperties(&mut voice_spec) })?;
+      }
+    };
     let rate = rate.unwrap_or(50) as f64;
     let rate = (rate / 100.0) * ((espeakRATE_MAXIMUM - espeakRATE_MINIMUM) as f64)
       + (espeakRATE_MINIMUM as f64);
