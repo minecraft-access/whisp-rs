@@ -100,8 +100,16 @@ pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native
   let rate = Some(rate.try_into().unwrap());
   let volume = Some(volume.try_into().unwrap());
   let pitch = Some(pitch.try_into().unwrap());
-  let result =
-    speak_to_audio_data(&synthesizer, &voice, &language, rate, volume, pitch, &text).unwrap();
+  let result = speak_to_audio_data(
+    Some(&synthesizer),
+    Some(&voice),
+    Some(&language),
+    rate,
+    volume,
+    pitch,
+    &text,
+  )
+  .unwrap();
   let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
   let speech_result_class = env
     .find_class("dev/emassey0135/audionavigation/client/speech/SpeechResult")

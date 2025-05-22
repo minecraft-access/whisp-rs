@@ -55,8 +55,8 @@ pub trait SpeechSynthesizer {
 pub trait SpeechSynthesizerToAudioData {
   fn speak(
     &self,
-    voice: &str,
-    language: &str,
+    voice: Option<&str>,
+    language: Option<&str>,
     rate: Option<u8>,
     volume: Option<u8>,
     pitch: Option<u8>,
@@ -66,8 +66,8 @@ pub trait SpeechSynthesizerToAudioData {
 pub trait SpeechSynthesizerToAudioOutput {
   fn speak(
     &self,
-    voice: &str,
-    language: &str,
+    voice: Option<&str>,
+    language: Option<&str>,
     rate: Option<u8>,
     volume: Option<u8>,
     pitch: Option<u8>,
