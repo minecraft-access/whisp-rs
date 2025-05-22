@@ -158,10 +158,7 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
           let stride = buffer.stride() * sample_size;
           let mut pcm2 = pcm2.write().unwrap();
           for _ in 0..frame_length - 1 {
-            let mut sample = std::slice::from_raw_parts(data, sample_size)
-              .into_iter()
-              .map(|byte| byte.clone())
-              .collect::<Vec<u8>>();
+            let mut sample = std::slice::from_raw_parts(data, sample_size).to_vec();
             pcm2.append(&mut sample);
             data = data.add(stride);
           }
