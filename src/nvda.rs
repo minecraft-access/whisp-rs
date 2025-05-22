@@ -45,8 +45,8 @@ impl SpeechSynthesizer for Nvda {
 impl SpeechSynthesizerToAudioOutput for Nvda {
   fn speak(
     &self,
-    _voice: &str,
-    _language: &str,
+    _voice: Option<&str>,
+    _language: Option<&str>,
     _rate: Option<u8>,
     _volume: Option<u8>,
     _pitch: Option<u8>,
