@@ -50,19 +50,28 @@ impl SpeechSynthesizer for OneCore {
 impl SpeechSynthesizerToAudioData for OneCore {
   fn speak(
     &self,
-    voice_name: &str,
-    _language: &str,
+    voice: Option<&str>,
+    language: Option<&str>,
     rate: Option<u8>,
     volume: Option<u8>,
     pitch: Option<u8>,
     text: &str,
   ) -> std::result::Result<SpeechResult, SpeechError> {
-    let voice = Synthesizer::AllVoices()?
-      .into_iter()
-      .find(|voice| voice.Id().unwrap() == voice_name)
-      .ok_or(SpeechError {
-        message: "Voice not found".to_owned(),
-      })?;
+    let voice = match (voice, language) {
+      (None, None) => Synthesizer::DefaultVoice()?,
+      (Some(voice_name), _) => Synthesizer::AllVoices()?
+        .into_iter()
+        .find(|voice| voice.Id().unwrap() == voice_name)
+        .ok_or(SpeechError {
+          message: "Voice not found".to_owned(),
+        })?,
+      (None, Some(language)) => Synthesizer::AllVoices()?
+        .into_iter()
+        .find(|voice| voice.Language().unwrap().to_string().to_lowercase() == language)
+        .ok_or(SpeechError {
+          message: "Voice not found".to_owned(),
+        })?,
+    };
     self.synthesizer.SetVoice(&voice)?;
     let options = self.synthesizer.Options()?;
     let rate = rate.unwrap_or(50) as f64;
