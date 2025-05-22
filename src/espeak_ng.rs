@@ -28,8 +28,7 @@ impl SpeechSynthesizer for EspeakNg {
     let path_cstr = CString::new(".")?;
     let sample_rate: u32 =
       unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? };
-    let voice = unsafe { espeak_GetCurrentVoice() };
-    let default_voice = unsafe { CStr::from_ptr((*voice).name).to_str()?.to_owned() };
+    let default_voice = "en".to_owned();
     let result = EspeakNg {
       default_voice,
       sample_rate,
