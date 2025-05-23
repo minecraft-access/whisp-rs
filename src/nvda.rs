@@ -1,5 +1,5 @@
-#![allow(non_camel_case_types)]
 #![allow(dead_code)]
+#![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 include!(concat!(env!("OUT_DIR"), "/nvda_bindings.rs"));
@@ -13,8 +13,8 @@ pub struct Nvda;
 impl SpeechSynthesizer for Nvda {
   fn new() -> std::result::Result<Self, SpeechError> {
     unsafe {
-      to_result(nvdaController_initialize())?;
-      to_result(nvdaController_testIfRunning())?;
+      to_result(nvdaController_initialize()).map_err(SpeechError::into_unknown)?;
+      to_result(nvdaController_testIfRunning()).map_err(SpeechError::into_unknown)?;
       Ok(Nvda)
     }
   }
@@ -55,16 +55,19 @@ impl SpeechSynthesizerToAudioOutput for Nvda {
   ) -> std::result::Result<(), SpeechError> {
     unsafe {
       if interrupt {
-        to_result(nvdaController_cancelSpeech())?;
+        to_result(nvdaController_cancelSpeech())
+          .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?;
       };
       let text = HSTRING::from(text);
-      to_result(nvdaController_speakText(text.as_ptr()))?;
+      to_result(nvdaController_speakText(text.as_ptr()))
+        .map_err(|err| SpeechError::into_speak_failed(&self.data().name, "nvda", err))?;
       Ok(())
     }
   }
   fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
     unsafe {
-      to_result(nvdaController_cancelSpeech())?;
+      to_result(nvdaController_cancelSpeech())
+        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?;
       Ok(())
     }
   }
