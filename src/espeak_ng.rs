@@ -1,5 +1,6 @@
 #![allow(non_upper_case_globals)]
 use crate::speech_synthesizer::*;
+use anyhow::anyhow;
 use espeakng_sys::*;
 use lazy_static::lazy_static;
 use std::cell::Cell;
@@ -10,12 +11,10 @@ use std::sync::Mutex;
 lazy_static! {
   static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::new()));
 }
-fn handle_espeak_error(error: espeak_ERROR) -> Result<(), SpeechError> {
+fn handle_espeak_error(error: espeak_ERROR) -> Result<(), anyhow::Error> {
   match error {
     espeak_ERROR_EE_OK => Ok(()),
-    error => Err(SpeechError {
-      message: format!("eSpeak-NG error code: {}", error),
-    }),
+    error => Err(anyhow!("eSpeak NG error: {}", error)),
   }
 }
 pub struct EspeakNg {
@@ -25,9 +24,12 @@ pub struct EspeakNg {
 impl SpeechSynthesizer for EspeakNg {
   fn new() -> Result<Self, SpeechError> {
     let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
-    let path_cstr = CString::new(".")?;
-    let sample_rate: u32 =
-      unsafe { espeak_Initialize(output, 0, path_cstr.as_ptr(), 0).try_into()? };
+    let path_cstr = CString::new(".").map_err(SpeechError::into_unknown)?;
+    let sample_rate: u32 = unsafe {
+      espeak_Initialize(output, 0, path_cstr.as_ptr(), 0)
+        .try_into()
+        .map_err(SpeechError::into_unknown)?
+    };
     let default_voice = "en".to_owned();
     let result = EspeakNg {
       default_voice,
@@ -113,7 +115,7 @@ impl SpeechSynthesizer for EspeakNg {
             None => vec![],
             Some(language) => vec![language.1],
           };
-          Ok::<(String, String, Vec<String>), SpeechError>((name, identifier, language))
+          Ok::<(String, String, Vec<String>), anyhow::Error>((name, identifier, language))
         })
         .collect::<Vec<(String, String, Vec<String>)>>()
     };
@@ -160,15 +162,17 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
   ) -> Result<SpeechResult, SpeechError> {
     match (voice, language) {
       (None, None) => {
-        let voice_cstr = CString::new(&*self.default_voice)?;
-        handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
+        let voice_cstr = CString::new(&*self.default_voice).map_err(SpeechError::into_unknown)?;
+        handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })
+          .map_err(|_| SpeechError::into_voice_not_found(&self.default_voice))?;
       }
       (Some(voice), _) => {
-        let voice_cstr = CString::new(voice)?;
-        handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })?;
+        let voice_cstr = CString::new(voice).map_err(SpeechError::into_unknown)?;
+        handle_espeak_error(unsafe { espeak_SetVoiceByName(voice_cstr.as_ptr()) })
+          .map_err(|_| SpeechError::into_voice_not_found(voice))?;
       }
       (_, Some(language)) => {
-        let language_cstr = CString::new(language)?;
+        let language_cstr = CString::new(language).map_err(SpeechError::into_unknown)?;
         let mut voice_spec = espeak_VOICE {
           name: std::ptr::null(),
           languages: language_cstr.as_ptr(),
@@ -180,22 +184,44 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
           score: 0,
           spare: std::ptr::null_mut(),
         };
-        handle_espeak_error(unsafe { espeak_SetVoiceByProperties(&mut voice_spec) })?;
+        handle_espeak_error(unsafe { espeak_SetVoiceByProperties(&mut voice_spec) })
+          .map_err(|_| SpeechError::into_language_not_found(language))?;
       }
     };
     let rate = rate.unwrap_or(50) as f64;
     let rate = (rate / 100.0) * ((espeakRATE_MAXIMUM - espeakRATE_MINIMUM) as f64)
       + (espeakRATE_MINIMUM as f64);
     let rate = (rate.round()) as i32;
-    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRATE, rate, 0) })?;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRATE, rate, 0) })
+      .map_err(|err| {
+        SpeechError::into_speak_failed(
+          &self.data().name,
+          voice.unwrap_or(language.unwrap_or(&self.default_voice)),
+          err,
+        )
+      })?;
     let volume = volume.unwrap_or(100) as i32;
     handle_espeak_error(unsafe {
       espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, volume * 2, 0)
+    })
+    .map_err(|err| {
+      SpeechError::into_speak_failed(
+        &self.data().name,
+        voice.unwrap_or(language.unwrap_or(&self.default_voice)),
+        err,
+      )
     })?;
     let pitch = pitch.unwrap_or(50) as i32;
-    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch, 0) })?;
+    handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch, 0) })
+      .map_err(|err| {
+        SpeechError::into_speak_failed(
+          &self.data().name,
+          voice.unwrap_or(language.unwrap_or(&self.default_voice)),
+          err,
+        )
+      })?;
     unsafe { espeak_SetSynthCallback(Some(synth_callback)) };
-    let text_cstr = CString::new(text)?;
+    let text_cstr = CString::new(text).map_err(SpeechError::into_unknown)?;
     let position = 0u32;
     let position_type: espeak_POSITION_TYPE = 0;
     let end_position = 0u32;
@@ -213,8 +239,18 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
         identifier,
         user_data,
       )
+    })
+    .map_err(|err| {
+      SpeechError::into_speak_failed(
+        &self.data().name,
+        voice.unwrap_or(language.unwrap_or(&self.default_voice)),
+        err,
+      )
     })?;
-    let result = BUFFER.lock()?.take();
+    let result = BUFFER
+      .lock()
+      .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to lock the eSpeak audio buffer")))?
+      .take();
     Ok(SpeechResult {
       pcm: result,
       sample_format: SampleFormat::S16,
