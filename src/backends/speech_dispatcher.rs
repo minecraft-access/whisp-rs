@@ -13,7 +13,7 @@ impl SpeechSynthesizer for SpeechDispatcher {
       .build()
       .map_err(SpeechError::into_unknown)?;
     client
-      .set_client_name(ClientName::new("", "audio-navigation-tts"))
+      .set_client_name(ClientName::new("", "whisp-rs"))
       .map_err(SpeechError::into_unknown)?
       .check_client_name_set()
       .map_err(SpeechError::into_unknown)?;
