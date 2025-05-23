@@ -1,4 +1,5 @@
 use crate::speech_synthesizer::*;
+use anyhow::anyhow;
 use quick_xml::events::BytesText;
 use quick_xml::writer::Writer;
 use std::collections::HashSet;
@@ -13,6 +14,7 @@ use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
 use windows::Win32::UI::Shell::SHCreateMemStream;
 fn set_parameters(
   synthesizer: &ISpVoice,
+  synthesizer_name: &str,
   default_voice: &str,
   voice: Option<&str>,
   language: Option<&str>,
@@ -24,28 +26,40 @@ fn set_parameters(
   unsafe {
     let voice_token = match (voice, language) {
       (None, None) => {
-        let token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL)?;
-        let mut default_voice = default_voice
+        let token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL)
+          .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, default_voice, err))?;
+        let mut default_voice_vector = default_voice
           .encode_utf16()
           .chain(Some(0))
           .collect::<Vec<u16>>();
-        token.SetId(
-          SPCAT_VOICES,
-          PWSTR::from_raw(default_voice.as_mut_ptr()),
-          false,
-        )?;
+        token
+          .SetId(
+            SPCAT_VOICES,
+            PWSTR::from_raw(default_voice_vector.as_mut_ptr()),
+            false,
+          )
+          .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, default_voice, err))?;
         token
       }
       (None, Some(language)) => {
         let category: ISpObjectTokenCategory =
-          CoCreateInstance(&SpObjectTokenCategory, None, CLSCTX_ALL)?;
-        category.SetId(SPCAT_VOICES, false)?;
-        let enumerator = category.EnumTokens(None, None)?;
+          CoCreateInstance(&SpObjectTokenCategory, None, CLSCTX_ALL)
+            .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, language, err))?;
+        category
+          .SetId(SPCAT_VOICES, false)
+          .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, language, err))?;
+        let enumerator = category
+          .EnumTokens(None, None)
+          .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, language, err))?;
         let mut count: u32 = 0;
-        enumerator.GetCount(&mut count)?;
+        enumerator
+          .GetCount(&mut count)
+          .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, language, err))?;
         let mut tokens = Vec::with_capacity(count as _);
         let mut tokens_fetched: u32 = 0;
-        enumerator.Next(count, tokens.as_mut_ptr(), Some(&mut tokens_fetched))?;
+        enumerator
+          .Next(count, tokens.as_mut_ptr(), Some(&mut tokens_fetched))
+          .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, language, err))?;
         tokens.set_len(tokens_fetched as _);
         tokens
           .into_iter()
@@ -63,32 +77,51 @@ fn set_parameters(
                     let mut name_vector = vec![0; LOCALE_NAME_MAX_LENGTH as _];
                     let length = LCIDToLocaleName(lcid, Some(&mut name_vector), 0);
                     name_vector.set_len((length - 1) as _);
-                    Ok::<String, SpeechError>(String::from_utf16(&name_vector)?.to_lowercase())
+                    Ok::<String, anyhow::Error>(String::from_utf16(&name_vector)?.to_lowercase())
                   })
                   .collect::<Vec<String>>(),
                 _ => vec![],
               };
-              Ok::<bool, SpeechError>(languages.iter().any(|name| name == language))
+              Ok::<bool, anyhow::Error>(languages.iter().any(|name| name == language))
             };
             closure().unwrap_or(false)
           })
-          .ok_or(SpeechError {
-            message: "Voice not found".to_owned(),
-          })?
+          .ok_or(SpeechError::into_language_not_found(language))?
       }
       (Some(voice), _) => {
-        let token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL)?;
-        let mut voice = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
-        token.SetId(SPCAT_VOICES, PWSTR::from_raw(voice.as_mut_ptr()), false)?;
+        let token: ISpObjectToken = CoCreateInstance(&SpObjectToken, None, CLSCTX_ALL)
+          .map_err(|err| SpeechError::into_speak_failed(synthesizer_name, voice, err))?;
+        let mut voice_vector = voice.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+        token
+          .SetId(
+            SPCAT_VOICES,
+            PWSTR::from_raw(voice_vector.as_mut_ptr()),
+            false,
+          )
+          .map_err(|_| SpeechError::into_voice_not_found(voice))?;
         token
       }
     };
-    synthesizer.SetVoice(&voice_token)?;
+    synthesizer.SetVoice(&voice_token).map_err(|_| {
+      SpeechError::into_voice_not_found(voice.unwrap_or(language.unwrap_or(default_voice)))
+    })?;
     let rate = rate.unwrap_or(50) as i32;
     let rate = (rate / 5) - 10;
-    synthesizer.SetRate(rate)?;
+    synthesizer.SetRate(rate).map_err(|err| {
+      SpeechError::into_speak_failed(
+        synthesizer_name,
+        voice.unwrap_or(language.unwrap_or(default_voice)),
+        err,
+      )
+    })?;
     let volume = volume.unwrap_or(100) as u16;
-    synthesizer.SetVolume(volume)?;
+    synthesizer.SetVolume(volume).map_err(|err| {
+      SpeechError::into_speak_failed(
+        synthesizer_name,
+        voice.unwrap_or(language.unwrap_or(default_voice)),
+        err,
+      )
+    })?;
     let pitch = pitch.unwrap_or(50) as i8;
     let pitch = (pitch / 5) - 10;
     let pitch = pitch.to_string();
@@ -96,9 +129,10 @@ fn set_parameters(
     writer
       .create_element("pitch")
       .with_attribute(("absmiddle", pitch.as_str()))
-      .write_text_content(BytesText::new(text))?;
+      .write_text_content(BytesText::new(text))
+      .map_err(SpeechError::into_unknown)?;
     let xml_vector = writer.into_inner().into_inner();
-    Ok(String::from_utf8(xml_vector)?)
+    Ok(String::from_utf8(xml_vector).map_err(SpeechError::into_unknown)?)
   }
 }
 pub struct Sapi {
@@ -109,9 +143,17 @@ pub struct Sapi {
 impl SpeechSynthesizer for Sapi {
   fn new() -> std::result::Result<Self, SpeechError> {
     unsafe {
-      let stream_synthesizer: ISpVoice = CoCreateInstance(&SpVoice, None, CLSCTX_ALL)?;
-      let playback_synthesizer: ISpVoice = CoCreateInstance(&SpVoice, None, CLSCTX_ALL)?;
-      let default_voice = playback_synthesizer.GetVoice()?.GetId()?.to_string()?;
+      let stream_synthesizer: ISpVoice =
+        CoCreateInstance(&SpVoice, None, CLSCTX_ALL).map_err(SpeechError::into_unknown)?;
+      let playback_synthesizer: ISpVoice =
+        CoCreateInstance(&SpVoice, None, CLSCTX_ALL).map_err(SpeechError::into_unknown)?;
+      let default_voice = playback_synthesizer
+        .GetVoice()
+        .map_err(SpeechError::into_unknown)?
+        .GetId()
+        .map_err(SpeechError::into_unknown)?
+        .to_string()
+        .map_err(SpeechError::into_unknown)?;
       Ok(Sapi {
         default_voice,
         stream_synthesizer,
@@ -130,14 +172,23 @@ impl SpeechSynthesizer for Sapi {
   fn list_voices(&self) -> std::result::Result<Vec<Voice>, SpeechError> {
     unsafe {
       let category: ISpObjectTokenCategory =
-        CoCreateInstance(&SpObjectTokenCategory, None, CLSCTX_ALL)?;
-      category.SetId(SPCAT_VOICES, false)?;
-      let enumerator = category.EnumTokens(None, None)?;
+        CoCreateInstance(&SpObjectTokenCategory, None, CLSCTX_ALL)
+          .map_err(SpeechError::into_unknown)?;
+      category
+        .SetId(SPCAT_VOICES, false)
+        .map_err(SpeechError::into_unknown)?;
+      let enumerator = category
+        .EnumTokens(None, None)
+        .map_err(SpeechError::into_unknown)?;
       let mut count: u32 = 0;
-      enumerator.GetCount(&mut count)?;
+      enumerator
+        .GetCount(&mut count)
+        .map_err(SpeechError::into_unknown)?;
       let mut tokens = Vec::with_capacity(count as _);
       let mut tokens_fetched: u32 = 0;
-      enumerator.Next(count, tokens.as_mut_ptr(), Some(&mut tokens_fetched))?;
+      enumerator
+        .Next(count, tokens.as_mut_ptr(), Some(&mut tokens_fetched))
+        .map_err(SpeechError::into_unknown)?;
       tokens.set_len(tokens_fetched as _);
       let voices = tokens
         .into_iter()
@@ -161,13 +212,13 @@ impl SpeechSynthesizer for Sapi {
                 let mut name_vector = vec![0; LOCALE_NAME_MAX_LENGTH as _];
                 let length = LCIDToLocaleName(lcid, Some(&mut name_vector), 0);
                 name_vector.set_len((length - 1) as _);
-                Ok::<String, SpeechError>(String::from_utf16(&name_vector)?.to_lowercase())
+                Ok::<String, anyhow::Error>(String::from_utf16(&name_vector)?.to_lowercase())
               })
               .filter(|language| seen.insert(language.clone()))
               .collect::<Vec<String>>(),
             _ => vec![],
           };
-          Ok::<Voice, SpeechError>(Voice {
+          Ok::<Voice, anyhow::Error>(Voice {
             synthesizer: self.data(),
             display_name,
             name,
@@ -197,10 +248,11 @@ impl SpeechSynthesizerToAudioData for Sapi {
     text: &str,
   ) -> std::result::Result<SpeechResult, SpeechError> {
     unsafe {
-      let audio_stream = SHCreateMemStream(None).ok_or(SpeechError {
-        message: "Failed to create memory stream".to_owned(),
-      })?;
-      let formatted_stream: ISpStream = CoCreateInstance(&SpStream, None, CLSCTX_ALL)?;
+      let audio_stream = SHCreateMemStream(None).ok_or(SpeechError::into_unknown(anyhow!(
+        "Failed to create memory stream",
+      )))?;
+      let formatted_stream: ISpStream =
+        CoCreateInstance(&SpStream, None, CLSCTX_ALL).map_err(SpeechError::into_unknown)?;
       let format_guid = GUID::from_u128(0xc31adbae_527f_4ff5_a230_f62bb61ff70c);
       let format = WAVEFORMATEX {
         wFormatTag: WAVE_FORMAT_PCM as _,
@@ -211,12 +263,22 @@ impl SpeechSynthesizerToAudioData for Sapi {
         wBitsPerSample: 16,
         cbSize: 0,
       };
-      formatted_stream.SetBaseStream(&audio_stream, &format_guid, &format)?;
+      formatted_stream
+        .SetBaseStream(&audio_stream, &format_guid, &format)
+        .map_err(SpeechError::into_unknown)?;
       self
         .stream_synthesizer
-        .SetOutput(&formatted_stream, false)?;
+        .SetOutput(&formatted_stream, false)
+        .map_err(|err| {
+          SpeechError::into_speak_failed(
+            &self.data().name,
+            voice.unwrap_or(language.unwrap_or(&self.default_voice)),
+            err,
+          )
+        })?;
       let xml_string = set_parameters(
         &self.stream_synthesizer,
+        &self.data().name,
         &self.default_voice,
         voice,
         language,
@@ -232,11 +294,20 @@ impl SpeechSynthesizerToAudioData for Sapi {
       let flags = SPF_IS_XML.0 | SPF_PARSE_SAPI.0;
       self
         .stream_synthesizer
-        .Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)?;
+        .Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)
+        .map_err(|err| {
+          SpeechError::into_speak_failed(
+            &self.data().name,
+            voice.unwrap_or(language.unwrap_or(&self.default_voice)),
+            err,
+          )
+        })?;
       let mut pcm: Vec<u8> = Vec::new();
       let mut buffer: Vec<u8> = Vec::with_capacity(65536);
       let mut bytes_read: u32 = 0;
-      formatted_stream.Seek(0, STREAM_SEEK_SET, None)?;
+      formatted_stream
+        .Seek(0, STREAM_SEEK_SET, None)
+        .map_err(SpeechError::into_unknown)?;
       loop {
         let result = formatted_stream.Read(
           buffer.as_mut_ptr() as *mut c_void,
@@ -276,6 +347,7 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
     unsafe {
       let xml_string = set_parameters(
         &self.playback_synthesizer,
+        &self.data().name,
         &self.default_voice,
         voice,
         language,
@@ -294,7 +366,14 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
       };
       self
         .playback_synthesizer
-        .Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)?;
+        .Speak(PWSTR::from_raw(xml.as_mut_ptr()), flags as u32, None)
+        .map_err(|err| {
+          SpeechError::into_speak_failed(
+            &self.data().name,
+            voice.unwrap_or(language.unwrap_or(&self.default_voice)),
+            err,
+          )
+        })?;
       Ok(())
     }
   }
@@ -302,7 +381,8 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
     unsafe {
       self
         .playback_synthesizer
-        .Speak(None, SPF_PURGEBEFORESPEAK.0 as u32, None)?;
+        .Speak(None, SPF_PURGEBEFORESPEAK.0 as u32, None)
+        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?;
       Ok(())
     }
   }
