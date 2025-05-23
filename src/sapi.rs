@@ -132,7 +132,7 @@ fn set_parameters(
       .write_text_content(BytesText::new(text))
       .map_err(SpeechError::into_unknown)?;
     let xml_vector = writer.into_inner().into_inner();
-    Ok(String::from_utf8(xml_vector).map_err(SpeechError::into_unknown)?)
+    String::from_utf8(xml_vector).map_err(SpeechError::into_unknown)
   }
 }
 pub struct Sapi {
