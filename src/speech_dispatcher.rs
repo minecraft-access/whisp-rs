@@ -206,21 +206,9 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     if interrupt {
       client
         .cancel(MessageScope::Last)
-        .map_err(|err| {
-          SpeechError::into_speak_failed(
-            &self.data().name,
-            voice.as_deref().unwrap_or(&self.default_output_module),
-            err,
-          )
-        })?
+        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?
         .check_status(OK_CANCELED)
-        .map_err(|err| {
-          SpeechError::into_speak_failed(
-            &self.data().name,
-            voice.as_deref().unwrap_or(&self.default_output_module),
-            err,
-          )
-        })?;
+        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?;
     };
     let lines = text
       .lines()
