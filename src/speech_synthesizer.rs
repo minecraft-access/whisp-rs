@@ -59,10 +59,6 @@ pub enum SpeechError {
     synthesizer: String,
     error: anyhow::Error,
   },
-  #[error("Playing audio with Rodio failed: {0}")]
-  PlayAudioFailed(anyhow::Error),
-  #[error("Stopping audio with Rodio failed: {0}")]
-  StopAudioFailed(anyhow::Error),
   #[error("Failed to initialize whisp-rs: {0}")]
   InitializeFailed(anyhow::Error),
   #[error("Unknown error: {0}")]
@@ -102,18 +98,6 @@ impl SpeechError {
       synthesizer: synthesizer.to_owned(),
       error: error.into(),
     }
-  }
-  pub fn into_play_audio_failed<T>(error: T) -> Self
-  where
-    T: Into<anyhow::Error>,
-  {
-    SpeechError::PlayAudioFailed(error.into())
-  }
-  pub fn into_stop_audio_failed<T>(error: T) -> Self
-  where
-    T: Into<anyhow::Error>,
-  {
-    SpeechError::StopAudioFailed(error.into())
   }
   pub fn into_initialize_failed<T>(error: T) -> Self
   where
