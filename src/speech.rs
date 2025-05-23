@@ -236,6 +236,22 @@ fn filter_synthesizers(
   };
   Ok(synthesizer)
 }
+fn check_parameters(
+  rate: Option<u8>,
+  volume: Option<u8>,
+  pitch: Option<u8>,
+) -> Result<(), SpeechError> {
+  if rate.is_some_and(|rate| rate > 100) {
+    Err(SpeechError::InvalidRate(rate.unwrap()))?;
+  };
+  if volume.is_some_and(|volume| volume > 100) {
+    Err(SpeechError::InvalidVolume(volume.unwrap()))?;
+  };
+  if pitch.is_some_and(|pitch| pitch > 100) {
+    Err(SpeechError::InvalidPitch(pitch.unwrap()))?;
+  };
+  Ok(())
+}
 fn internal_speak_to_audio_data(
   synthesizer: Option<&str>,
   voice: Option<&str>,
@@ -267,6 +283,7 @@ pub fn speak_to_audio_data(
   pitch: Option<u8>,
   text: &str,
 ) -> Result<SpeechResult, SpeechError> {
+  check_parameters(rate, volume, pitch)?;
   OPERATION_TX
     .get()
     .ok_or(SpeechError::into_unknown(anyhow!(
@@ -354,6 +371,7 @@ pub fn speak_to_audio_output(
   text: &str,
   interrupt: bool,
 ) -> Result<(), SpeechError> {
+  check_parameters(rate, volume, pitch)?;
   OPERATION_TX
     .get()
     .ok_or(SpeechError::into_unknown(anyhow!(
