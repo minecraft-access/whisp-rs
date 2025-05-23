@@ -12,6 +12,7 @@ use crate::sapi::Sapi;
 #[cfg(target_os = "linux")]
 use crate::speech_dispatcher::SpeechDispatcher;
 use crate::speech_synthesizer::*;
+use anyhow::anyhow;
 use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
@@ -43,7 +44,7 @@ enum Operation {
     String,
     bool,
   ),
-  StopSpeech(String),
+  StopSpeech(Option<String>),
 }
 enum ResultValue {
   Initialize(Result<(), SpeechError>),
@@ -56,13 +57,21 @@ static OPERATION_TX: OnceLock<mpsc::Sender<Operation>> = OnceLock::new();
 static RESULT_RX: Mutex<OnceCell<mpsc::Receiver<ResultValue>>> = Mutex::new(OnceCell::new());
 pub fn initialize() -> Result<(), SpeechError> {
   let (operation_tx, operation_rx) = mpsc::channel();
-  OPERATION_TX.set(operation_tx).unwrap();
+  OPERATION_TX
+    .set(operation_tx)
+    .map_err(|_| SpeechError::into_initialize_failed(anyhow!("Failed to set OPERATION_TX")))?;
   let (result_tx, result_rx) = mpsc::channel();
-  RESULT_RX.lock()?.set(result_rx).unwrap();
+  RESULT_RX
+    .lock()
+    .map_err(|_| SpeechError::into_initialize_failed(anyhow!("Failed to lock RESULT_RX")))?
+    .set(result_rx)
+    .map_err(|_| SpeechError::into_initialize_failed(anyhow!("Failed to set RESULT_RX")))?;
   thread::spawn(move || {
-    let result = {
-      let (output_stream, output_stream_handle) = OutputStream::try_default().unwrap();
-      let sink = Sink::try_new(&output_stream_handle).unwrap();
+    let closure = || {
+      let (output_stream, output_stream_handle) =
+        OutputStream::try_default().map_err(SpeechError::into_initialize_failed)?;
+      let sink =
+        Sink::try_new(&output_stream_handle).map_err(SpeechError::into_initialize_failed)?;
       let _result = OUTPUT_STREAM.with(|cell| cell.set(Some(output_stream)));
       let _result = SINK.set(sink);
       let mut synthesizers: Vec<Result<Box<dyn SpeechSynthesizer>, SpeechError>> = Vec::new();
@@ -95,7 +104,7 @@ pub fn initialize() -> Result<(), SpeechError> {
       );
       Ok(())
     };
-    result_tx.send(ResultValue::Initialize(result)).unwrap();
+    result_tx.send(ResultValue::Initialize(closure())).unwrap();
     while let Ok(operation) = operation_rx.recv() {
       match operation {
         Operation::ListVoices => result_tx
@@ -138,14 +147,27 @@ pub fn initialize() -> Result<(), SpeechError> {
           ))
           .unwrap(),
         Operation::StopSpeech(synthesizer) => result_tx
-          .send(ResultValue::StopSpeech(internal_stop_speech(&synthesizer)))
+          .send(ResultValue::StopSpeech(internal_stop_speech(
+            synthesizer.as_deref(),
+          )))
           .unwrap(),
       };
     }
   });
-  match RESULT_RX.lock()?.get().unwrap().recv().unwrap() {
+  match RESULT_RX
+    .lock()
+    .map_err(|_| SpeechError::into_initialize_failed(anyhow!("Failed to lock RESULT_RX")))?
+    .get()
+    .ok_or(SpeechError::into_initialize_failed(anyhow!(
+      "RESULT_RX contains no channel"
+    )))?
+    .recv()
+    .map_err(SpeechError::into_initialize_failed)?
+  {
     ResultValue::Initialize(result) => result,
-    _ => panic!("Invalid initialization result"),
+    _ => Err(SpeechError::into_initialize_failed(anyhow!(
+      "Invalid initialization result"
+    )))?,
   }
 }
 fn internal_list_voices() -> Result<Vec<Voice>, SpeechError> {
@@ -159,10 +181,27 @@ fn internal_list_voices() -> Result<Vec<Voice>, SpeechError> {
   })
 }
 pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
-  OPERATION_TX.get().unwrap().send(Operation::ListVoices)?;
-  match RESULT_RX.lock()?.get().unwrap().recv()? {
+  OPERATION_TX
+    .get()
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "OPERATION_TX contains no channel"
+    )))?
+    .send(Operation::ListVoices)
+    .map_err(SpeechError::into_unknown)?;
+  match RESULT_RX
+    .lock()
+    .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to lock RESULT_RX")))?
+    .get()
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "RESULT_RX contains no channel"
+    )))?
+    .recv()
+    .map_err(SpeechError::into_unknown)?
+  {
     ResultValue::ListVoices(result) => result,
-    _ => panic!("Received result value for other operation"),
+    _ => Err(SpeechError::into_unknown(anyhow!(
+      "Received result value for other operation"
+    )))?,
   }
 }
 fn filter_synthesizers(
@@ -185,8 +224,10 @@ fn filter_synthesizers(
       voices.sort_unstable_by_key(|voice| voice.priority);
       voices
         .first()
-        .ok_or(SpeechError {
-          message: "Not voices found with given attributes".to_owned(),
+        .ok_or(match (voice, language) {
+          (None, None) => SpeechError::NoVoices,
+          (Some(voice), _) => SpeechError::into_voice_not_found(voice),
+          (None, Some(language)) => SpeechError::into_language_not_found(language),
         })?
         .synthesizer
         .name
@@ -205,17 +246,15 @@ fn internal_speak_to_audio_data(
   text: &str,
 ) -> Result<SpeechResult, SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| {
-    let synthesizer = filter_synthesizers(synthesizer, voice, language)?;
-    match synthesizers.get(&synthesizer) {
-      None => Err(SpeechError {
-        message: "Unknown synthesizer".to_owned(),
-      }),
-      Some(synthesizer) => match synthesizer.as_to_audio_data() {
-        None => Err(SpeechError {
-          message: "Synthesizer does not support returning audio data".to_owned(),
-        }),
-        Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text),
-      },
+    let synthesizer_name = filter_synthesizers(synthesizer, voice, language)?;
+    let synthesizer = synthesizers
+      .get(&synthesizer_name)
+      .ok_or(SpeechError::into_synthesizer_not_found(&synthesizer_name))?;
+    match synthesizer.as_to_audio_data() {
+      None => Err(SpeechError::into_audio_data_not_supported(
+        &synthesizer_name,
+      )),
+      Some(synthesizer) => synthesizer.speak(voice, language, rate, volume, pitch, text),
     }
   })
 }
@@ -230,7 +269,9 @@ pub fn speak_to_audio_data(
 ) -> Result<SpeechResult, SpeechError> {
   OPERATION_TX
     .get()
-    .unwrap()
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "OPERATION_TX contains no channel"
+    )))?
     .send(Operation::SpeakToAudioData(
       synthesizer.map(|value| value.to_owned()),
       voice.map(|value| value.to_owned()),
@@ -239,10 +280,22 @@ pub fn speak_to_audio_data(
       volume,
       pitch,
       text.to_owned(),
-    ))?;
-  match RESULT_RX.lock()?.get().unwrap().recv()? {
+    ))
+    .map_err(SpeechError::into_unknown)?;
+  match RESULT_RX
+    .lock()
+    .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to lock RESULT_RX")))?
+    .get()
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "RESULT_RX contains no channel"
+    )))?
+    .recv()
+    .map_err(SpeechError::into_unknown)?
+  {
     ResultValue::SpeakToAudioData(result) => result,
-    _ => panic!("Received result value for other operation"),
+    _ => Err(SpeechError::into_unknown(anyhow!(
+      "Received result value for other operation"
+    )))?,
   }
 }
 fn internal_speak_to_audio_output(
@@ -256,22 +309,15 @@ fn internal_speak_to_audio_output(
   interrupt: bool,
 ) -> Result<(), SpeechError> {
   SYNTHESIZERS.with_borrow(|synthesizers| {
-    let synthesizer = filter_synthesizers(synthesizer, voice, language)?;
-    let synthesizer = match synthesizers.get(&synthesizer) {
-      None => {
-        return Err(SpeechError {
-          message: "Unknown synthesizer".to_owned(),
-        })
-      }
-      Some(synthesizer) => synthesizer,
-    };
+    let synthesizer_name = filter_synthesizers(synthesizer, voice, language)?;
+    let synthesizer = synthesizers
+      .get(&synthesizer_name)
+      .ok_or(SpeechError::into_synthesizer_not_found(&synthesizer_name))?;
     match (
       synthesizer.as_to_audio_data(),
       synthesizer.as_to_audio_output(),
     ) {
-      (None, None) => Err(SpeechError {
-        message: "Synthesizer does not support playing or returning audio".to_owned(),
-      }),
+      (None, None) => Err(SpeechError::into_speech_not_supported(&synthesizer_name)),
       (Some(synthesizer), None) => {
         let result = synthesizer.speak(voice, language, rate, volume, pitch, text)?;
         let buffer = result
@@ -281,9 +327,15 @@ fn internal_speak_to_audio_output(
           .collect::<Vec<i16>>();
         let source = SamplesBuffer::new(1, result.sample_rate, buffer);
         if interrupt {
-          SINK.get().unwrap().stop();
+          SINK
+            .get()
+            .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+            .stop();
         };
-        SINK.get().unwrap().append(source);
+        SINK
+          .get()
+          .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+          .append(source);
         Ok(())
       }
       (_, Some(synthesizer)) => {
@@ -304,7 +356,9 @@ pub fn speak_to_audio_output(
 ) -> Result<(), SpeechError> {
   OPERATION_TX
     .get()
-    .unwrap()
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "OPERATION_TX contains no channel"
+    )))?
     .send(Operation::SpeakToAudioOutput(
       synthesizer.map(|value| value.to_owned()),
       voice.map(|value| value.to_owned()),
@@ -314,33 +368,83 @@ pub fn speak_to_audio_output(
       pitch,
       text.to_owned(),
       interrupt,
-    ))?;
-  match RESULT_RX.lock()?.get().unwrap().recv()? {
+    ))
+    .map_err(SpeechError::into_unknown)?;
+  match RESULT_RX
+    .lock()
+    .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to lock RESULT_RX")))?
+    .get()
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "RESULT_RX contains no channel"
+    )))?
+    .recv()
+    .map_err(SpeechError::into_unknown)?
+  {
     ResultValue::SpeakToAudioOutput(result) => result,
-    _ => panic!("Received result value for other operation"),
+    _ => Err(SpeechError::into_unknown(anyhow!(
+      "Received result value for other operation"
+    )))?,
   }
 }
-fn internal_stop_speech(synthesizer: &str) -> Result<(), SpeechError> {
-  SYNTHESIZERS.with_borrow(|synthesizers| match synthesizers.get(synthesizer) {
-    None => Err(SpeechError {
-      message: "Unknown synthesizer".to_owned(),
-    }),
-    Some(synthesizer) => match synthesizer.as_to_audio_output() {
-      None => {
-        SINK.get().unwrap().stop();
-        Ok(())
+fn internal_stop_speech(synthesizer: Option<&str>) -> Result<(), SpeechError> {
+  SYNTHESIZERS.with_borrow(|synthesizers| match synthesizer {
+    Some(synthesizer_name) => {
+      let synthesizer = synthesizers
+        .get(synthesizer_name)
+        .ok_or(SpeechError::into_synthesizer_not_found(synthesizer_name))?;
+      match (
+        synthesizer.as_to_audio_data(),
+        synthesizer.as_to_audio_output(),
+      ) {
+        (None, None) => Err(SpeechError::into_speech_not_supported(synthesizer_name)),
+        (Some(_), None) => {
+          SINK
+            .get()
+            .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+            .stop();
+          Ok(())
+        }
+        (_, Some(synthesizer)) => synthesizer.stop_speech(),
       }
-      Some(synthesizer) => synthesizer.stop_speech(),
-    },
+    }
+    None => {
+      SINK
+        .get()
+        .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+        .stop();
+      for synthesizer in synthesizers
+        .iter()
+        .flat_map(|synthesizer| synthesizer.1.as_to_audio_output())
+      {
+        let _result = synthesizer.stop_speech();
+      }
+      Ok(())
+    }
   })
 }
-pub fn stop_speech(synthesizer: &str) -> Result<(), SpeechError> {
+pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), SpeechError> {
   OPERATION_TX
     .get()
-    .unwrap()
-    .send(Operation::StopSpeech(synthesizer.to_owned()))?;
-  match RESULT_RX.lock()?.get().unwrap().recv()? {
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "OPERATION_TX contains no channel"
+    )))?
+    .send(Operation::StopSpeech(
+      synthesizer.map(|value| value.to_owned()),
+    ))
+    .map_err(SpeechError::into_unknown)?;
+  match RESULT_RX
+    .lock()
+    .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to lock RESULT_RX")))?
+    .get()
+    .ok_or(SpeechError::into_unknown(anyhow!(
+      "RESULT_RX contains no channel"
+    )))?
+    .recv()
+    .map_err(SpeechError::into_unknown)?
+  {
     ResultValue::StopSpeech(result) => result,
-    _ => panic!("Received result value for other operation"),
+    _ => Err(SpeechError::into_unknown(anyhow!(
+      "Received result value for other operation"
+    )))?,
   }
 }
