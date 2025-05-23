@@ -4,6 +4,7 @@ use crate::speech::*;
 use jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::jbyte;
 use jni::JNIEnv;
+pub mod audio;
 mod backends;
 pub mod error;
 pub mod speech;

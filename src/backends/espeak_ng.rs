@@ -1,4 +1,5 @@
 #![allow(non_upper_case_globals)]
+use crate::audio::*;
 use crate::error::SpeechError;
 use crate::speech_synthesizer::*;
 use anyhow::anyhow;

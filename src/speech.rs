@@ -1,3 +1,4 @@
+use crate::audio::*;
 #[cfg(target_os = "macos")]
 use crate::backends::av_speech_synthesizer::AvSpeechSynthesizer;
 use crate::backends::espeak_ng::EspeakNg;
