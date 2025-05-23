@@ -4,20 +4,8 @@ use crate::speech::*;
 use jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::jbyte;
 use jni::JNIEnv;
-#[cfg(target_os = "macos")]
-mod av_speech_synthesizer;
-mod espeak_ng;
-#[cfg(windows)]
-mod jaws;
-#[cfg(windows)]
-mod nvda;
-#[cfg(windows)]
-mod one_core;
-#[cfg(windows)]
-mod sapi;
+mod backends;
 pub mod speech;
-#[cfg(target_os = "linux")]
-mod speech_dispatcher;
 mod speech_synthesizer;
 #[no_mangle]
 pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native_initialize<

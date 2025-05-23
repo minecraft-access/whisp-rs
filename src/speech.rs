@@ -1,16 +1,16 @@
 #[cfg(target_os = "macos")]
-use crate::av_speech_synthesizer::AvSpeechSynthesizer;
-use crate::espeak_ng::EspeakNg;
+use crate::backends::av_speech_synthesizer::AvSpeechSynthesizer;
+use crate::backends::espeak_ng::EspeakNg;
 #[cfg(windows)]
-use crate::jaws::Jaws;
+use crate::backends::jaws::Jaws;
 #[cfg(windows)]
-use crate::nvda::Nvda;
+use crate::backends::nvda::Nvda;
 #[cfg(windows)]
-use crate::one_core::OneCore;
+use crate::backends::one_core::OneCore;
 #[cfg(windows)]
-use crate::sapi::Sapi;
+use crate::backends::sapi::Sapi;
 #[cfg(target_os = "linux")]
-use crate::speech_dispatcher::SpeechDispatcher;
+use crate::backends::speech_dispatcher::SpeechDispatcher;
 use crate::speech_synthesizer::*;
 use anyhow::anyhow;
 use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
