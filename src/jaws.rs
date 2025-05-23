@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use crate::speech_synthesizer::*;
+use anyhow::anyhow;
 use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::Com::*;
@@ -23,14 +24,13 @@ pub struct Jaws {
 }
 impl SpeechSynthesizer for Jaws {
   fn new() -> std::result::Result<Self, SpeechError> {
-    if unsafe { FindWindowW(w!("JFWUI2"), None).is_err() } {
-      return Err(SpeechError {
-        message: "JAWS is not running".to_owned(),
-      });
-    };
-    let guid = GUID::from_u128(0xCCE5B1E5_B2ED_45D5_B09F_8EC54B75ABF4);
-    let jaws_api = unsafe { CoCreateInstance(&guid, None, CLSCTX_ALL)? };
-    Ok(Jaws { jaws_api })
+    unsafe {
+      FindWindowW(w!("JFWUI2"), None).map_err(SpeechError::into_unknown)?;
+      let guid = GUID::from_u128(0xCCE5B1E5_B2ED_45D5_B09F_8EC54B75ABF4);
+      let jaws_api =
+        CoCreateInstance(&guid, None, CLSCTX_ALL).map_err(SpeechError::into_unknown)?;
+      Ok(Jaws { jaws_api })
+    }
   }
   fn data(&self) -> SpeechSynthesizerData {
     SpeechSynthesizerData {
@@ -72,18 +72,27 @@ impl SpeechSynthesizerToAudioOutput for Jaws {
       self
         .jaws_api
         .SayString(text.into(), interrupt.into(), &mut result)
-        .ok()?
+        .ok()
+        .map_err(|err| SpeechError::into_speak_failed(&self.data().name, "jaws", err))?
     };
     if result.into() {
       Ok(())
     } else {
-      Err(SpeechError {
-        message: "JAWS failed to speak".to_owned(),
-      })
+      Err(SpeechError::into_speak_failed(
+        &self.data().name,
+        "jaws",
+        anyhow!("JAWS failed to speak"),
+      ))
     }
   }
   fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
-    unsafe { self.jaws_api.StopSpeech().ok()? };
+    unsafe {
+      self
+        .jaws_api
+        .StopSpeech()
+        .ok()
+        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?
+    };
     Ok(())
   }
 }
