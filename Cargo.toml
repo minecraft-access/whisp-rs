@@ -9,10 +9,12 @@ license = "GPL-3.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.98"
 espeakng-sys = { git = "https://github.com/emassey0135/espeakng-sys.git", version = "0.3.0", features = ["clang-runtime"] }
 jni = "0.21.1"
 lazy_static = "1.5.0"
 rodio = { version = "0.20.1", default-features = false, features = ["wav", "hound"] }
+thiserror = "2.0.12"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ssip-client-async = "0.15.0"
