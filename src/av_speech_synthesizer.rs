@@ -1,4 +1,5 @@
 use crate::speech_synthesizer::*;
+use anyhow::anyhow;
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2_avf_audio::{
@@ -22,20 +23,17 @@ fn set_parameters(
     let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
     match (voice, language) {
       (None, None) => {}
-      (Some(voice), _) => {
-        let voice = NSString::from_str(voice);
-        let voice = AVSpeechSynthesisVoice::voiceWithIdentifier(&voice).ok_or(SpeechError {
-          message: "No AVSpeechSynthesizer voices found with this name".to_owned(),
-        })?;
+      (Some(voice_name), _) => {
+        let voice = NSString::from_str(voice_name);
+        let voice = AVSpeechSynthesisVoice::voiceWithIdentifier(&voice)
+          .ok_or(SpeechError::into_voice_not_found(voice_name))?;
         utterance.setVoice(Some(&voice));
       }
       (_, Some(language)) => {
         let voice = AVSpeechSynthesisVoice::speechVoices()
           .into_iter()
           .find(|voice| voice.language().to_string().to_lowercase() == language)
-          .ok_or(SpeechError {
-            message: "Voice not found with this language".to_owned(),
-          })?;
+          .ok_or(SpeechError::into_language_not_found(language))?;
         utterance.setVoice(Some(&voice));
       }
     };
@@ -133,58 +131,75 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
       let sample_format2 = sample_format.clone();
       let sample_rate: Arc<OnceLock<u32>> = Arc::new(OnceLock::new());
       let sample_rate2 = sample_rate.clone();
-      let (done_tx, done_rx) = mpsc::channel();
+      let (done_tx, done_rx) = mpsc::channel::<Result<(), SpeechError>>();
       let callback = RcBlock::new(move |buffer: NonNull<AVAudioBuffer>| {
-        let buffer = buffer
-          .as_ref()
-          .downcast_ref::<AVAudioPCMBuffer>()
-          .expect("AVSpeechSynthesizer did not return a PCM buffer");
-        let format = buffer.format();
-        let sample_format = match format.commonFormat() {
-          AVAudioCommonFormat::PCMFormatFloat32 => SampleFormat::F32,
-          AVAudioCommonFormat::PCMFormatInt16 => SampleFormat::S16,
-          _ => panic!("Invalid audio format from AVSpeechSynthesizer"),
-        };
-        let frame_length = buffer.frameLength();
-        if frame_length > 0 {
-          let sample_size = match sample_format {
-            SampleFormat::F32 => 4,
-            SampleFormat::S16 => 2,
+        let closure =
+          || {
+            let buffer = buffer.as_ref().downcast_ref::<AVAudioPCMBuffer>().ok_or(
+              SpeechError::into_unknown(anyhow!("AVSpeechSynthesizer did not return a PCM buffer")),
+            )?;
+            let format = buffer.format();
+            let sample_format = match format.commonFormat() {
+              AVAudioCommonFormat::PCMFormatFloat32 => SampleFormat::F32,
+              AVAudioCommonFormat::PCMFormatInt16 => SampleFormat::S16,
+              _ => Err(SpeechError::into_unknown(anyhow!(
+                "Invalid audio format from AVSpeechSynthesizer"
+              )))?,
+            };
+            let frame_length = buffer.frameLength();
+            if frame_length > 0 {
+              let sample_size = match sample_format {
+                SampleFormat::F32 => 4,
+                SampleFormat::S16 => 2,
+              };
+              let mut data = match sample_format {
+                SampleFormat::F32 => (*buffer.floatChannelData()).as_ptr() as *const u8,
+                SampleFormat::S16 => (*buffer.int16ChannelData()).as_ptr() as *const u8,
+              };
+              let stride = buffer.stride() * sample_size;
+              let mut pcm2 = pcm2
+                .write()
+                .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to write PCM vector")))?;
+              for _ in 0..frame_length - 1 {
+                let mut sample = std::slice::from_raw_parts(data, sample_size).to_vec();
+                pcm2.append(&mut sample);
+                data = data.add(stride);
+              }
+            } else {
+              sample_format2
+                .set(sample_format)
+                .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to set sample format")))?;
+              sample_rate2
+                .set(format.sampleRate() as u32)
+                .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to set sample rate")))?;
+            };
+            Ok(())
           };
-          let mut data = match sample_format {
-            SampleFormat::F32 => (*buffer.floatChannelData()).as_ptr() as *const u8,
-            SampleFormat::S16 => (*buffer.int16ChannelData()).as_ptr() as *const u8,
-          };
-          let stride = buffer.stride() * sample_size;
-          let mut pcm2 = pcm2.write().unwrap();
-          for _ in 0..frame_length - 1 {
-            let mut sample = std::slice::from_raw_parts(data, sample_size).to_vec();
-            pcm2.append(&mut sample);
-            data = data.add(stride);
-          }
-        } else {
-          sample_format2.set(sample_format).unwrap();
-          sample_rate2.set(format.sampleRate() as u32).unwrap();
-          done_tx.send(()).unwrap();
-        };
+        done_tx.send(closure()).unwrap();
       });
       self
         .synthesizer
-        .lock()?
+        .lock()
+        .map_err(|_| {
+          SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+        })?
         .writeUtterance_toBufferCallback(&utterance, RcBlock::as_ptr(&callback));
-      done_rx.recv()?;
-      let pcm = pcm.read()?.clone();
+      done_rx.recv().map_err(SpeechError::into_unknown)??;
+      let pcm = pcm
+        .read()
+        .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to read PCM vector")))?
+        .clone();
       let sample_format = sample_format
         .get()
-        .ok_or(SpeechError {
-          message: "Sample format not set".to_owned(),
-        })?
+        .ok_or(SpeechError::into_unknown(anyhow!(
+          "Sample format not set".to_owned()
+        )))?
         .to_owned();
       let sample_rate = sample_rate
         .get()
-        .ok_or(SpeechError {
-          message: "Sample rate not set".to_owned(),
-        })?
+        .ok_or(SpeechError::into_unknown(anyhow!(
+          "Sample rate not set".to_owned()
+        )))?
         .to_owned();
       Ok(SpeechResult {
         pcm,
@@ -210,10 +225,19 @@ impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
       if interrupt {
         self
           .synthesizer
-          .lock()?
+          .lock()
+          .map_err(|_| {
+            SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+          })?
           .stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
       };
-      self.synthesizer.lock()?.speakUtterance(&utterance);
+      self
+        .synthesizer
+        .lock()
+        .map_err(|_| {
+          SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+        })?
+        .speakUtterance(&utterance);
       Ok(())
     }
   }
@@ -221,7 +245,10 @@ impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
     unsafe {
       self
         .synthesizer
-        .lock()?
+        .lock()
+        .map_err(|_| {
+          SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+        })?
         .stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
       Ok(())
     }
