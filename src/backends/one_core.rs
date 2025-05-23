@@ -1,3 +1,4 @@
+use crate::error::SpeechError;
 use crate::speech_synthesizer::*;
 use rodio::*;
 use std::io::Cursor;

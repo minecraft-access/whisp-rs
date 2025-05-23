@@ -1,3 +1,4 @@
+use crate::error::SpeechError;
 use crate::speech_synthesizer::*;
 use anyhow::anyhow;
 use block2::RcBlock;

@@ -3,6 +3,7 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 include!(concat!(env!("OUT_DIR"), "/nvda_bindings.rs"));
+use crate::error::SpeechError;
 use crate::speech_synthesizer::*;
 use windows::core::*;
 use windows::Win32::Foundation::WIN32_ERROR;

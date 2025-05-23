@@ -5,6 +5,7 @@ use jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::jbyte;
 use jni::JNIEnv;
 mod backends;
+pub mod error;
 pub mod speech;
 mod speech_synthesizer;
 #[no_mangle]

@@ -11,6 +11,7 @@ use crate::backends::one_core::OneCore;
 use crate::backends::sapi::Sapi;
 #[cfg(target_os = "linux")]
 use crate::backends::speech_dispatcher::SpeechDispatcher;
+use crate::error::SpeechError;
 use crate::speech_synthesizer::*;
 use anyhow::anyhow;
 use rodio::{buffer::SamplesBuffer, OutputStream, Sink};

@@ -1,3 +1,4 @@
+use crate::error::SpeechError;
 use crate::speech_synthesizer::*;
 use ssip_client_async::*;
 use std::cell::RefCell;

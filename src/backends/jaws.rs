@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+use crate::error::SpeechError;
 use crate::speech_synthesizer::*;
 use anyhow::anyhow;
 use windows::core::*;
