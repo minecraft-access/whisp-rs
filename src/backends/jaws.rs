@@ -53,7 +53,7 @@ impl Backend for Jaws {
     Some(self)
   }
   fn as_braille_backend(&self) -> Option<&dyn BrailleBackend> {
-    None
+    Some(self)
   }
 }
 impl SpeechSynthesizerToAudioOutput for Jaws {
@@ -97,5 +97,29 @@ impl SpeechSynthesizerToAudioOutput for Jaws {
         .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
     };
     Ok(())
+  }
+}
+impl BrailleBackend for Jaws {
+  fn priority(&self) -> u8 {
+    0
+  }
+  fn braille(&self, text: &str) -> std::result::Result<(), OutputError> {
+    let function = "BrailleString(\"".to_owned() + &text.replace("\"", "'") + "\")";
+    let mut result: VARIANT_BOOL = Default::default();
+    unsafe {
+      self
+        .jaws_api
+        .RunFunction(function.into(), &mut result)
+        .ok()
+        .map_err(|err| OutputError::into_braille_failed(&self.name(), err))?
+    };
+    if result.into() {
+      Ok(())
+    } else {
+      Err(OutputError::into_braille_failed(
+        &self.name(),
+        anyhow!("JAWS failed to Braille the message"),
+      ))
+    }
   }
 }
