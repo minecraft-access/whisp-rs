@@ -39,7 +39,7 @@ impl Backend for Nvda {
     Some(self)
   }
   fn as_braille_backend(&self) -> Option<&dyn BrailleBackend> {
-    None
+    Some(self)
   }
 }
 impl SpeechSynthesizerToAudioOutput for Nvda {
@@ -71,6 +71,19 @@ impl SpeechSynthesizerToAudioOutput for Nvda {
     unsafe {
       to_result(nvdaController_cancelSpeech())
         .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
+      Ok(())
+    }
+  }
+}
+impl BrailleBackend for Nvda {
+  fn priority(&self) -> u8 {
+    0
+  }
+  fn braille(&self, text: &str) -> std::result::Result<(), OutputError> {
+    unsafe {
+      let text = HSTRING::from(text);
+      to_result(nvdaController_brailleMessage(text.as_ptr()))
+        .map_err(|err| OutputError::into_braille_failed(&self.name(), err))?;
       Ok(())
     }
   }
