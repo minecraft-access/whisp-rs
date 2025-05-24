@@ -1,6 +1,7 @@
 use crate::audio::*;
-use crate::error::SpeechError;
-use crate::speech_synthesizer::*;
+use crate::backends::*;
+use crate::error::OutputError;
+use crate::metadata::Voice;
 use anyhow::anyhow;
 use block2::RcBlock;
 use objc2::rc::Retained;
@@ -19,7 +20,7 @@ fn set_parameters(
   volume: Option<u8>,
   pitch: Option<u8>,
   text: &str,
-) -> Result<Retained<AVSpeechUtterance>, SpeechError> {
+) -> Result<Retained<AVSpeechUtterance>, OutputError> {
   unsafe {
     let text = NSString::from_str(text);
     let utterance = AVSpeechUtterance::speechUtteranceWithString(&text);
@@ -28,14 +29,14 @@ fn set_parameters(
       (Some(voice_name), _) => {
         let voice = NSString::from_str(voice_name);
         let voice = AVSpeechSynthesisVoice::voiceWithIdentifier(&voice)
-          .ok_or(SpeechError::into_voice_not_found(voice_name))?;
+          .ok_or(OutputError::into_voice_not_found(voice_name))?;
         utterance.setVoice(Some(&voice));
       }
       (_, Some(language)) => {
         let voice = AVSpeechSynthesisVoice::speechVoices()
           .into_iter()
           .find(|voice| voice.language().to_string().to_lowercase() == language)
-          .ok_or(SpeechError::into_language_not_found(language))?;
+          .ok_or(OutputError::into_language_not_found(language))?;
         utterance.setVoice(Some(&voice));
       }
     };
@@ -61,22 +62,17 @@ fn set_parameters(
 pub struct AvSpeechSynthesizer {
   synthesizer: Mutex<Retained<AVSpeechSynthesizer>>,
 }
-impl SpeechSynthesizer for AvSpeechSynthesizer {
-  fn new() -> Result<Self, SpeechError> {
+impl Backend for AvSpeechSynthesizer {
+  fn new() -> Result<Self, OutputError> {
     let result = AvSpeechSynthesizer {
       synthesizer: unsafe { Mutex::new(AVSpeechSynthesizer::new()) },
     };
     Ok(result)
   }
-  fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData {
-      name: "AVSpeechSynthesizer".to_owned(),
-      supports_to_audio_data: true,
-      supports_to_audio_output: true,
-      supports_speech_parameters: true,
-    }
+  fn name(&self) -> String {
+    "AVSpeechSynthesizer".to_owned()
   }
-  fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
+  fn list_voices(&self) -> Result<Vec<Voice>, OutputError> {
     unsafe {
       let voices = AVSpeechSynthesisVoice::speechVoices();
       let voices = voices
@@ -97,7 +93,7 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
             _ => 3,
           };
           Voice {
-            synthesizer: self.data(),
+            synthesizer: self.speech_metadata().unwrap(),
             display_name,
             name,
             languages,
@@ -108,14 +104,20 @@ impl SpeechSynthesizer for AvSpeechSynthesizer {
       Ok(voices)
     }
   }
-  fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
+  fn as_speech_synthesizer_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
     Some(self)
   }
-  fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
+  fn as_speech_synthesizer_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
     Some(self)
+  }
+  fn as_braille_backend(&self) -> Option<&dyn BrailleBackend> {
+    None
   }
 }
 impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
+  fn supports_speech_parameters(&self) -> bool {
+    true
+  }
   fn speak(
     &self,
     voice: Option<&str>,
@@ -124,7 +126,7 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
     volume: Option<u8>,
     pitch: Option<u8>,
     text: &str,
-  ) -> Result<SpeechResult, SpeechError> {
+  ) -> Result<SpeechResult, OutputError> {
     unsafe {
       let utterance = set_parameters(voice, language, rate, volume, pitch, text)?;
       let pcm: Arc<RwLock<Vec<u8>>> = Arc::new(RwLock::new(Vec::new()));
@@ -133,18 +135,18 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
       let sample_format2 = sample_format.clone();
       let sample_rate: Arc<OnceLock<u32>> = Arc::new(OnceLock::new());
       let sample_rate2 = sample_rate.clone();
-      let (done_tx, done_rx) = mpsc::channel::<Result<(), SpeechError>>();
+      let (done_tx, done_rx) = mpsc::channel::<Result<(), OutputError>>();
       let callback = RcBlock::new(move |buffer: NonNull<AVAudioBuffer>| {
         let closure =
           || {
             let buffer = buffer.as_ref().downcast_ref::<AVAudioPCMBuffer>().ok_or(
-              SpeechError::into_unknown(anyhow!("AVSpeechSynthesizer did not return a PCM buffer")),
+              OutputError::into_unknown(anyhow!("AVSpeechSynthesizer did not return a PCM buffer")),
             )?;
             let format = buffer.format();
             let sample_format = match format.commonFormat() {
               AVAudioCommonFormat::PCMFormatFloat32 => SampleFormat::F32,
               AVAudioCommonFormat::PCMFormatInt16 => SampleFormat::S16,
-              _ => Err(SpeechError::into_unknown(anyhow!(
+              _ => Err(OutputError::into_unknown(anyhow!(
                 "Invalid audio format from AVSpeechSynthesizer"
               )))?,
             };
@@ -161,7 +163,7 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
               let stride = buffer.stride() * sample_size;
               let mut pcm2 = pcm2
                 .write()
-                .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to write PCM vector")))?;
+                .map_err(|_| OutputError::into_unknown(anyhow!("Failed to write PCM vector")))?;
               for _ in 0..frame_length - 1 {
                 let mut sample = std::slice::from_raw_parts(data, sample_size).to_vec();
                 pcm2.append(&mut sample);
@@ -170,10 +172,10 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
             } else {
               sample_format2
                 .set(sample_format)
-                .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to set sample format")))?;
+                .map_err(|_| OutputError::into_unknown(anyhow!("Failed to set sample format")))?;
               sample_rate2
                 .set(format.sampleRate() as u32)
-                .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to set sample rate")))?;
+                .map_err(|_| OutputError::into_unknown(anyhow!("Failed to set sample rate")))?;
             };
             Ok(())
           };
@@ -183,23 +185,23 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
         .synthesizer
         .lock()
         .map_err(|_| {
-          SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+          OutputError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
         })?
         .writeUtterance_toBufferCallback(&utterance, RcBlock::as_ptr(&callback));
-      done_rx.recv().map_err(SpeechError::into_unknown)??;
+      done_rx.recv().map_err(OutputError::into_unknown)??;
       let pcm = pcm
         .read()
-        .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to read PCM vector")))?
+        .map_err(|_| OutputError::into_unknown(anyhow!("Failed to read PCM vector")))?
         .clone();
       let sample_format = sample_format
         .get()
-        .ok_or(SpeechError::into_unknown(anyhow!(
+        .ok_or(OutputError::into_unknown(anyhow!(
           "Sample format not set".to_owned()
         )))?
         .to_owned();
       let sample_rate = sample_rate
         .get()
-        .ok_or(SpeechError::into_unknown(anyhow!(
+        .ok_or(OutputError::into_unknown(anyhow!(
           "Sample rate not set".to_owned()
         )))?
         .to_owned();
@@ -212,6 +214,9 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
   }
 }
 impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
+  fn supports_speech_parameters(&self) -> bool {
+    true
+  }
   fn speak(
     &self,
     voice: Option<&str>,
@@ -221,7 +226,7 @@ impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
     pitch: Option<u8>,
     text: &str,
     interrupt: bool,
-  ) -> Result<(), SpeechError> {
+  ) -> Result<(), OutputError> {
     unsafe {
       let utterance = set_parameters(voice, language, rate, volume, pitch, text)?;
       if interrupt {
@@ -229,7 +234,7 @@ impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
           .synthesizer
           .lock()
           .map_err(|_| {
-            SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+            OutputError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
           })?
           .stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
       };
@@ -237,19 +242,19 @@ impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
         .synthesizer
         .lock()
         .map_err(|_| {
-          SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+          OutputError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
         })?
         .speakUtterance(&utterance);
       Ok(())
     }
   }
-  fn stop_speech(&self) -> Result<(), SpeechError> {
+  fn stop_speech(&self) -> Result<(), OutputError> {
     unsafe {
       self
         .synthesizer
         .lock()
         .map_err(|_| {
-          SpeechError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
+          OutputError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
         })?
         .stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
       Ok(())
