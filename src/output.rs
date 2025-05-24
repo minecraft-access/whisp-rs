@@ -130,6 +130,7 @@ fn filter_synthesizers(
   synthesizer: Option<&str>,
   voice: Option<&str>,
   language: Option<&str>,
+  audio_data_needed: bool,
 ) -> Result<String, OutputError> {
   let synthesizer = match (synthesizer, voice, language) {
     (Some(synthesizer), _, _) => synthesizer.to_owned(),
@@ -139,9 +140,13 @@ fn filter_synthesizers(
         .filter(|voice| {
           voice_name.map(|name| voice.name == name).unwrap_or(true)
             || language
-              .map(|name| voice.languages.iter().any(|language| language == name))
+              .map(|name| {
+                voice.languages.is_empty()
+                  || voice.languages.iter().any(|language| language == name)
+              })
               .unwrap_or(true)
         })
+        .filter(|voice| !!audio_data_needed || voice.synthesizer.supports_speaking_to_audio_data)
         .collect::<Vec<Voice>>();
       voices.sort_unstable_by_key(|voice| voice.priority);
       voices
@@ -194,6 +199,7 @@ pub fn speak_to_audio_data(
         synthesizer.as_deref(),
         voice.as_deref(),
         language.as_deref(),
+        true,
       )?;
       let synthesizer = backends
         .get(&synthesizer_name)
@@ -240,6 +246,7 @@ pub fn speak_to_audio_output(
         synthesizer.as_deref(),
         voice.as_deref(),
         language.as_deref(),
+        false,
       )?;
       let synthesizer = backends
         .get(&synthesizer_name)
