@@ -115,8 +115,7 @@ pub fn list_braille_backends() -> Result<Vec<BrailleBackendMetadata>, OutputErro
       let backends = backends
         .values()
         .filter(|backend| backend.as_braille_backend().is_some())
-        .map(|backend| backend.braille_metadata())
-        .flatten()
+        .flat_map(|backend| backend.braille_metadata())
         .collect::<Vec<BrailleBackendMetadata>>();
       Ok(Box::new(backends) as OperationOk)
     })
@@ -146,7 +145,7 @@ fn filter_synthesizers(
               })
               .unwrap_or(true)
         })
-        .filter(|voice| !!audio_data_needed || voice.synthesizer.supports_speaking_to_audio_data)
+        .filter(|voice| !audio_data_needed || voice.synthesizer.supports_speaking_to_audio_data)
         .collect::<Vec<Voice>>();
       voices.sort_unstable_by_key(|voice| voice.priority);
       voices
