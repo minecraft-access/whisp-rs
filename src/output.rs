@@ -12,7 +12,7 @@ use crate::backends::one_core::OneCore;
 use crate::backends::sapi::Sapi;
 #[cfg(target_os = "linux")]
 use crate::backends::speech_dispatcher::SpeechDispatcher;
-use crate::backends::Backend;
+use crate::backends::*;
 use crate::error::OutputError;
 use crate::metadata::*;
 use anyhow::anyhow;
@@ -104,6 +104,23 @@ fn internal_list_voices() -> Result<Vec<Voice>, OutputError> {
 }
 pub fn list_voices() -> Result<Vec<Voice>, OutputError> {
   let closure = || Ok(Box::new(internal_list_voices()?) as OperationOk);
+  let result = perform_operation(Box::new(closure))?
+    .downcast()
+    .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
+  Ok(*result)
+}
+pub fn list_braille_backends() -> Result<Vec<BrailleBackendMetadata>, OutputError> {
+  let closure = || {
+    BACKENDS.with_borrow(|backends| {
+      let backends = backends
+        .values()
+        .filter(|backend| backend.as_braille_backend().is_some())
+        .map(|backend| backend.braille_metadata())
+        .flatten()
+        .collect::<Vec<BrailleBackendMetadata>>();
+      Ok(Box::new(backends) as OperationOk)
+    })
+  };
   let result = perform_operation(Box::new(closure))?
     .downcast()
     .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
@@ -306,6 +323,36 @@ pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), OutputError> {
           {
             let _result = synthesizer.stop_speech();
           }
+        }
+      };
+      Ok(Box::new(()) as OperationOk)
+    })
+  };
+  perform_operation(Box::new(closure))?;
+  Ok(())
+}
+pub fn braille(backend: Option<&str>, text: &str) -> Result<(), OutputError> {
+  let backend = backend.map(|value| value.to_owned());
+  let text = text.to_owned();
+  let closure = move || {
+    BACKENDS.with_borrow(|backends| {
+      match backend {
+        Some(backend_name) => backends
+          .get(&backend_name)
+          .ok_or(OutputError::into_backend_not_found(&backend_name))?
+          .as_braille_backend()
+          .ok_or(OutputError::into_braille_not_supported(&backend_name))?
+          .braille(&text)?,
+        None => {
+          let mut braille_backends = backends
+            .iter()
+            .flat_map(|backend| backend.1.as_braille_backend())
+            .collect::<Vec<&dyn BrailleBackend>>();
+          braille_backends.sort_unstable_by_key(|backend| backend.priority());
+          braille_backends
+            .first()
+            .ok_or(OutputError::NoBrailleBackends)?
+            .braille(&text)?
         }
       };
       Ok(Box::new(()) as OperationOk)
