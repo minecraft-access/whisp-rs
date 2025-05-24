@@ -19,14 +19,19 @@ pub enum OutputError {
   InvalidVolume(u8),
   #[error("Speech pitch ({0}) is not between 0 and 100")]
   InvalidPitch(u8),
-  #[error("Failed to speak with the requested backend ({backend} and voice {voice}: {error}")]
+  #[error("Failed to speak with the requested backend {backend} and voice {voice}: {error}")]
   SpeakFailed {
     backend: String,
     voice: String,
     error: anyhow::Error,
   },
-  #[error("Failed to stop the requested backend ({backend} from speaking: {error}")]
+  #[error("Failed to stop the requested backend {backend} from speaking: {error}")]
   StopSpeechFailed {
+    backend: String,
+    error: anyhow::Error,
+  },
+  #[error("Failed to Braille message with the requested backend {backend}: {error}")]
+  BrailleFailed {
     backend: String,
     error: anyhow::Error,
   },
@@ -66,6 +71,15 @@ impl OutputError {
     T: Into<anyhow::Error>,
   {
     OutputError::StopSpeechFailed {
+      backend: backend.to_owned(),
+      error: error.into(),
+    }
+  }
+  pub fn into_braille_failed<T>(backend: &str, error: T) -> Self
+  where
+    T: Into<anyhow::Error>,
+  {
+    OutputError::BrailleFailed {
       backend: backend.to_owned(),
       error: error.into(),
     }
