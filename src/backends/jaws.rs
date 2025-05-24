@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
-use crate::error::SpeechError;
-use crate::speech_synthesizer::*;
+use crate::backends::*;
+use crate::error::OutputError;
+use crate::metadata::Voice;
 use anyhow::anyhow;
 use windows::core::*;
 use windows::Win32::Foundation::*;
@@ -23,41 +24,42 @@ unsafe trait IJawsApi: IDispatch {
 pub struct Jaws {
   jaws_api: IJawsApi,
 }
-impl SpeechSynthesizer for Jaws {
-  fn new() -> std::result::Result<Self, SpeechError> {
+impl Backend for Jaws {
+  fn new() -> std::result::Result<Self, OutputError> {
     unsafe {
-      FindWindowW(w!("JFWUI2"), None).map_err(SpeechError::into_unknown)?;
+      FindWindowW(w!("JFWUI2"), None).map_err(OutputError::into_unknown)?;
       let guid = GUID::from_u128(0xCCE5B1E5_B2ED_45D5_B09F_8EC54B75ABF4);
       let jaws_api =
-        CoCreateInstance(&guid, None, CLSCTX_ALL).map_err(SpeechError::into_unknown)?;
+        CoCreateInstance(&guid, None, CLSCTX_ALL).map_err(OutputError::into_unknown)?;
       Ok(Jaws { jaws_api })
     }
   }
-  fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData {
-      name: "JAWS".to_owned(),
-      supports_to_audio_data: false,
-      supports_to_audio_output: true,
-      supports_speech_parameters: false,
-    }
+  fn name(&self) -> String {
+    "JAWS".to_owned()
   }
-  fn list_voices(&self) -> std::result::Result<Vec<Voice>, SpeechError> {
+  fn list_voices(&self) -> std::result::Result<Vec<Voice>, OutputError> {
     Ok(vec![Voice {
-      synthesizer: self.data(),
+      synthesizer: self.speech_metadata().unwrap(),
       display_name: "JAWS".to_owned(),
       name: "jaws".to_owned(),
       languages: vec![],
       priority: 0,
     }])
   }
-  fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
+  fn as_speech_synthesizer_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
     None
   }
-  fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
+  fn as_speech_synthesizer_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
     Some(self)
+  }
+  fn as_braille_backend(&self) -> Option<&dyn BrailleBackend> {
+    None
   }
 }
 impl SpeechSynthesizerToAudioOutput for Jaws {
+  fn supports_speech_parameters(&self) -> bool {
+    false
+  }
   fn speak(
     &self,
     _voice: Option<&str>,
@@ -67,32 +69,32 @@ impl SpeechSynthesizerToAudioOutput for Jaws {
     _pitch: Option<u8>,
     text: &str,
     interrupt: bool,
-  ) -> std::result::Result<(), SpeechError> {
+  ) -> std::result::Result<(), OutputError> {
     let mut result: VARIANT_BOOL = Default::default();
     unsafe {
       self
         .jaws_api
         .SayString(text.into(), interrupt.into(), &mut result)
         .ok()
-        .map_err(|err| SpeechError::into_speak_failed(&self.data().name, "jaws", err))?
+        .map_err(|err| OutputError::into_speak_failed(&self.name(), "jaws", err))?
     };
     if result.into() {
       Ok(())
     } else {
-      Err(SpeechError::into_speak_failed(
-        &self.data().name,
+      Err(OutputError::into_speak_failed(
+        &self.name(),
         "jaws",
         anyhow!("JAWS failed to speak"),
       ))
     }
   }
-  fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
+  fn stop_speech(&self) -> std::result::Result<(), OutputError> {
     unsafe {
       self
         .jaws_api
         .StopSpeech()
         .ok()
-        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?
+        .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
     };
     Ok(())
   }
