@@ -1,14 +1,14 @@
 #![deny(clippy::all)]
 //#![deny(clippy::pedantic)]
-use crate::speech::*;
+use crate::output::*;
 use jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::jbyte;
 use jni::JNIEnv;
 pub mod audio;
 mod backends;
 pub mod error;
-pub mod speech;
-mod speech_synthesizer;
+pub mod metadata;
+pub mod output;
 #[no_mangle]
 pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native_initialize<
   'local,

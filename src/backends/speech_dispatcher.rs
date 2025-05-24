@@ -1,5 +1,6 @@
-use crate::error::SpeechError;
-use crate::speech_synthesizer::*;
+use crate::backends::*;
+use crate::error::OutputError;
+use crate::metadata::Voice;
 use ssip_client_async::*;
 use std::cell::RefCell;
 pub struct SpeechDispatcher {
@@ -7,47 +8,42 @@ pub struct SpeechDispatcher {
   default_language: String,
   client: RefCell<Client<fifo::UnixStream>>,
 }
-impl SpeechSynthesizer for SpeechDispatcher {
-  fn new() -> Result<Self, SpeechError> {
+impl Backend for SpeechDispatcher {
+  fn new() -> Result<Self, OutputError> {
     let mut client = fifo::Builder::new()
       .build()
-      .map_err(SpeechError::into_unknown)?;
+      .map_err(OutputError::into_unknown)?;
     client
       .set_client_name(ClientName::new("", "whisp-rs"))
-      .map_err(SpeechError::into_unknown)?
+      .map_err(OutputError::into_unknown)?
       .check_client_name_set()
-      .map_err(SpeechError::into_unknown)?;
+      .map_err(OutputError::into_unknown)?;
     let default_output_module = client
       .get_output_module()
-      .map_err(SpeechError::into_unknown)?
+      .map_err(OutputError::into_unknown)?
       .receive_string(OK_GET)
-      .map_err(SpeechError::into_unknown)?;
+      .map_err(OutputError::into_unknown)?;
     let default_language = client
       .get_language()
-      .map_err(SpeechError::into_unknown)?
+      .map_err(OutputError::into_unknown)?
       .receive_string(OK_GET)
-      .map_err(SpeechError::into_unknown)?;
+      .map_err(OutputError::into_unknown)?;
     Ok(SpeechDispatcher {
       default_output_module,
       default_language,
       client: RefCell::new(client),
     })
   }
-  fn data(&self) -> SpeechSynthesizerData {
-    SpeechSynthesizerData {
-      name: "Speech Dispatcher".to_owned(),
-      supports_to_audio_data: false,
-      supports_to_audio_output: true,
-      supports_speech_parameters: true,
-    }
+  fn name(&self) -> String {
+    "Speech Dispatcher".to_owned()
   }
-  fn list_voices(&self) -> Result<Vec<Voice>, SpeechError> {
+  fn list_voices(&self) -> Result<Vec<Voice>, OutputError> {
     let mut client = self.client.borrow_mut();
     let voices = client
       .list_output_modules()
-      .map_err(SpeechError::into_unknown)?
+      .map_err(OutputError::into_unknown)?
       .receive_lines(OK_OUTPUT_MODULES_LIST_SENT)
-      .map_err(SpeechError::into_unknown)?
+      .map_err(OutputError::into_unknown)?
       .into_iter()
       .flat_map(|module| {
         client
@@ -66,7 +62,7 @@ impl SpeechSynthesizer for SpeechDispatcher {
             let display_name = name.clone() + " (" + &module + ")";
             let name = module.clone() + "/" + &name;
             Ok(Voice {
-              synthesizer: self.data(),
+              synthesizer: self.speech_metadata().unwrap(),
               display_name,
               name,
               languages,
@@ -79,14 +75,20 @@ impl SpeechSynthesizer for SpeechDispatcher {
       .collect();
     Ok(voices)
   }
-  fn as_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
+  fn as_speech_synthesizer_to_audio_data(&self) -> Option<&dyn SpeechSynthesizerToAudioData> {
     None
   }
-  fn as_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
+  fn as_speech_synthesizer_to_audio_output(&self) -> Option<&dyn SpeechSynthesizerToAudioOutput> {
     Some(self)
+  }
+  fn as_braille_backend(&self) -> Option<&dyn BrailleBackend> {
+    None
   }
 }
 impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
+  fn supports_speech_parameters(&self) -> bool {
+    true
+  }
   fn speak(
     &self,
     voice: Option<&str>,
@@ -96,7 +98,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     pitch: Option<u8>,
     text: &str,
     interrupt: bool,
-  ) -> std::result::Result<(), SpeechError> {
+  ) -> std::result::Result<(), OutputError> {
     let voice = match (voice, language) {
       (None, None) => None,
       (Some(voice), _) => Some(voice.to_owned()),
@@ -105,7 +107,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
           .list_voices()?
           .into_iter()
           .find(|voice| voice.languages.iter().any(|name| name == language))
-          .ok_or(SpeechError::into_language_not_found(language))?
+          .ok_or(OutputError::into_language_not_found(language))?
           .name,
       ),
     };
@@ -115,20 +117,18 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
         client
           .set_output_module(ClientScope::Current, &self.default_output_module)
           .map_err(|err| {
-            SpeechError::into_speak_failed(&self.data().name, &self.default_output_module, err)
+            OutputError::into_speak_failed(&self.name(), &self.default_output_module, err)
           })?
           .check_status(OK_OUTPUT_MODULE_SET)
           .map_err(|err| {
-            SpeechError::into_speak_failed(&self.data().name, &self.default_output_module, err)
+            OutputError::into_speak_failed(&self.name(), &self.default_output_module, err)
           })?;
         client
           .set_language(ClientScope::Current, &self.default_language)
-          .map_err(|err| {
-            SpeechError::into_speak_failed(&self.data().name, &self.default_language, err)
-          })?
+          .map_err(|err| OutputError::into_speak_failed(&self.name(), &self.default_language, err))?
           .check_status(OK_LANGUAGE_SET)
           .map_err(|err| {
-            SpeechError::into_speak_failed(&self.data().name, &self.default_language, err)
+            OutputError::into_speak_failed(&self.name(), &self.default_language, err)
           })?;
       }
       Some(ref voice) => {
@@ -137,14 +137,14 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
         let voice = split.next().unwrap();
         client
           .set_output_module(ClientScope::Current, output_module)
-          .map_err(|err| SpeechError::into_speak_failed(&self.data().name, output_module, err))?
+          .map_err(|err| OutputError::into_speak_failed(&self.name(), output_module, err))?
           .check_status(OK_OUTPUT_MODULE_SET)
-          .map_err(|err| SpeechError::into_speak_failed(&self.data().name, output_module, err))?;
+          .map_err(|err| OutputError::into_speak_failed(&self.name(), output_module, err))?;
         client
           .set_synthesis_voice(ClientScope::Current, voice)
-          .map_err(|err| SpeechError::into_speak_failed(&self.data().name, voice, err))?
+          .map_err(|err| OutputError::into_speak_failed(&self.name(), voice, err))?
           .check_status(OK_VOICE_SET)
-          .map_err(|err| SpeechError::into_speak_failed(&self.data().name, voice, err))?;
+          .map_err(|err| OutputError::into_speak_failed(&self.name(), voice, err))?;
       }
     };
     let rate = rate.unwrap_or(50) as i8;
@@ -152,16 +152,16 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     client
       .set_rate(ClientScope::Current, rate)
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
       })?
       .check_status(OK_RATE_SET)
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
@@ -171,16 +171,16 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     client
       .set_pitch(ClientScope::Current, pitch)
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
       })?
       .check_status(OK_PITCH_SET)
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
@@ -190,16 +190,16 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     client
       .set_volume(ClientScope::Current, volume)
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
       })?
       .check_status(OK_VOLUME_SET)
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
@@ -207,9 +207,9 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     if interrupt {
       client
         .cancel(MessageScope::Last)
-        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?
+        .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
         .check_status(OK_CANCELED)
-        .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?;
+        .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
     };
     let lines = text
       .lines()
@@ -218,46 +218,46 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     client
       .speak()
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
       })?
       .check_receiving_data()
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
       })?
       .send_lines(&lines)
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
       })?
       .receive_message_id()
       .map_err(|err| {
-        SpeechError::into_speak_failed(
-          &self.data().name,
+        OutputError::into_speak_failed(
+          &self.name(),
           voice.as_deref().unwrap_or(&self.default_output_module),
           err,
         )
       })?;
     Ok(())
   }
-  fn stop_speech(&self) -> std::result::Result<(), SpeechError> {
+  fn stop_speech(&self) -> std::result::Result<(), OutputError> {
     self
       .client
       .borrow_mut()
       .cancel(MessageScope::Last)
-      .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?
+      .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
       .check_status(OK_CANCELED)
-      .map_err(|err| SpeechError::into_stop_speech_failed(&self.data().name, err))?;
+      .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
     Ok(())
   }
 }

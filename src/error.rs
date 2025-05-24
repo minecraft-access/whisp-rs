@@ -1,11 +1,11 @@
 use thiserror::Error;
 #[derive(Debug, Error)]
-pub enum SpeechError {
-  #[error("No synthesizer has been registered with the name {0}")]
-  SynthesizerNotFound(String),
-  #[error("The synthesizer {0} does not support returning audio data")]
+pub enum OutputError {
+  #[error("No backend has been registered with the name {0}")]
+  BackendNotFound(String),
+  #[error("The backend {0} does not support returning audio data")]
   AudioDataNotSupported(String),
-  #[error("The synthesizer {0} does not support speech")]
+  #[error("The backend {0} does not support speech")]
   SpeechNotSupported(String),
   #[error("No voice was found with the name {0}")]
   VoiceNotFound(String),
@@ -19,17 +19,15 @@ pub enum SpeechError {
   InvalidVolume(u8),
   #[error("Speech pitch ({0}) is not between 0 and 100")]
   InvalidPitch(u8),
-  #[error(
-    "Failed to speak with the requested synthesizer ({synthesizer} and voice {voice}: {error}"
-  )]
+  #[error("Failed to speak with the requested backend ({backend} and voice {voice}: {error}")]
   SpeakFailed {
-    synthesizer: String,
+    backend: String,
     voice: String,
     error: anyhow::Error,
   },
-  #[error("Failed to stop the requested synthesizer ({synthesizer} from speaking: {error}")]
+  #[error("Failed to stop the requested backend ({backend} from speaking: {error}")]
   StopSpeechFailed {
-    synthesizer: String,
+    backend: String,
     error: anyhow::Error,
   },
   #[error("Failed to initialize whisp-rs: {0}")]
@@ -37,38 +35,38 @@ pub enum SpeechError {
   #[error("Unknown error: {0}")]
   Unknown(anyhow::Error),
 }
-impl SpeechError {
-  pub fn into_synthesizer_not_found(synthesizer: &str) -> Self {
-    SpeechError::SynthesizerNotFound(synthesizer.to_owned())
+impl OutputError {
+  pub fn into_backend_not_found(backend: &str) -> Self {
+    OutputError::BackendNotFound(backend.to_owned())
   }
-  pub fn into_audio_data_not_supported(synthesizer: &str) -> Self {
-    SpeechError::AudioDataNotSupported(synthesizer.to_owned())
+  pub fn into_audio_data_not_supported(backend: &str) -> Self {
+    OutputError::AudioDataNotSupported(backend.to_owned())
   }
-  pub fn into_speech_not_supported(synthesizer: &str) -> Self {
-    SpeechError::SpeechNotSupported(synthesizer.to_owned())
+  pub fn into_speech_not_supported(backend: &str) -> Self {
+    OutputError::SpeechNotSupported(backend.to_owned())
   }
   pub fn into_voice_not_found(voice: &str) -> Self {
-    SpeechError::VoiceNotFound(voice.to_owned())
+    OutputError::VoiceNotFound(voice.to_owned())
   }
   pub fn into_language_not_found(language: &str) -> Self {
-    SpeechError::LanguageNotFound(language.to_owned())
+    OutputError::LanguageNotFound(language.to_owned())
   }
-  pub fn into_speak_failed<T>(synthesizer: &str, voice: &str, error: T) -> Self
+  pub fn into_speak_failed<T>(backend: &str, voice: &str, error: T) -> Self
   where
     T: Into<anyhow::Error>,
   {
-    SpeechError::SpeakFailed {
-      synthesizer: synthesizer.to_owned(),
+    OutputError::SpeakFailed {
+      backend: backend.to_owned(),
       voice: voice.to_owned(),
       error: error.into(),
     }
   }
-  pub fn into_stop_speech_failed<T>(synthesizer: &str, error: T) -> Self
+  pub fn into_stop_speech_failed<T>(backend: &str, error: T) -> Self
   where
     T: Into<anyhow::Error>,
   {
-    SpeechError::StopSpeechFailed {
-      synthesizer: synthesizer.to_owned(),
+    OutputError::StopSpeechFailed {
+      backend: backend.to_owned(),
       error: error.into(),
     }
   }
@@ -76,12 +74,12 @@ impl SpeechError {
   where
     T: Into<anyhow::Error>,
   {
-    SpeechError::InitializeFailed(error.into())
+    OutputError::InitializeFailed(error.into())
   }
   pub fn into_unknown<T>(error: T) -> Self
   where
     T: Into<anyhow::Error>,
   {
-    SpeechError::Unknown(error.into())
+    OutputError::Unknown(error.into())
   }
 }

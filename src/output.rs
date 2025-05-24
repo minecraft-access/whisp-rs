@@ -12,8 +12,9 @@ use crate::backends::one_core::OneCore;
 use crate::backends::sapi::Sapi;
 #[cfg(target_os = "linux")]
 use crate::backends::speech_dispatcher::SpeechDispatcher;
-use crate::error::SpeechError;
-use crate::speech_synthesizer::*;
+use crate::backends::Backend;
+use crate::error::OutputError;
+use crate::metadata::*;
 use anyhow::anyhow;
 use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
 use std::any::Any;
@@ -22,55 +23,51 @@ use std::collections::HashMap;
 use std::sync::{mpsc, OnceLock};
 use std::thread;
 thread_local! {
-  static SYNTHESIZERS: RefCell<HashMap<String, Box<dyn SpeechSynthesizer>>> = RefCell::new(HashMap::new());
+  static BACKENDS: RefCell<HashMap<String, Box<dyn Backend>>> = RefCell::new(HashMap::new());
   static OUTPUT_STREAM: OnceCell<Option<OutputStream>> = const {OnceCell::new() };
 }
 static SINK: OnceLock<Sink> = OnceLock::new();
 type OperationOk = Box<dyn Any + Send + Sync>;
-type OperationResult = Result<OperationOk, SpeechError>;
+type OperationResult = Result<OperationOk, OutputError>;
 type Operation = Box<dyn FnOnce() -> OperationResult + Send + Sync>;
 static OPERATION_TX: OnceLock<mpsc::Sender<(Operation, mpsc::Sender<OperationResult>)>> =
   OnceLock::new();
-pub fn initialize() -> Result<(), SpeechError> {
+pub fn initialize() -> Result<(), OutputError> {
   let (operation_tx, operation_rx) = mpsc::channel();
   OPERATION_TX
     .set(operation_tx)
-    .map_err(|_| SpeechError::into_initialize_failed(anyhow!("Failed to set OPERATION_TX")))?;
+    .map_err(|_| OutputError::into_initialize_failed(anyhow!("Failed to set OPERATION_TX")))?;
   let (result_tx, result_rx) = mpsc::channel();
   thread::spawn(move || {
     let closure = || {
       let (output_stream, output_stream_handle) =
-        OutputStream::try_default().map_err(SpeechError::into_initialize_failed)?;
+        OutputStream::try_default().map_err(OutputError::into_initialize_failed)?;
       let sink =
-        Sink::try_new(&output_stream_handle).map_err(SpeechError::into_initialize_failed)?;
+        Sink::try_new(&output_stream_handle).map_err(OutputError::into_initialize_failed)?;
       let _result = OUTPUT_STREAM.with(|cell| cell.set(Some(output_stream)));
       let _result = SINK.set(sink);
-      let mut synthesizers: Vec<Result<Box<dyn SpeechSynthesizer>, SpeechError>> = Vec::new();
-      synthesizers.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+      let mut backends: Vec<Result<Box<dyn Backend>, OutputError>> = Vec::new();
+      backends.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn Backend>));
       #[cfg(windows)]
       {
-        synthesizers.push(Sapi::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
-        synthesizers
-          .push(OneCore::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
-        synthesizers.push(Jaws::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
-        synthesizers.push(Nvda::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+        backends.push(Sapi::new().map(|value| Box::new(value) as Box<dyn Backend>));
+        backends.push(OneCore::new().map(|value| Box::new(value) as Box<dyn Backend>));
+        backends.push(Jaws::new().map(|value| Box::new(value) as Box<dyn Backend>));
+        backends.push(Nvda::new().map(|value| Box::new(value) as Box<dyn Backend>));
       }
       #[cfg(target_os = "linux")]
       {
-        synthesizers
-          .push(SpeechDispatcher::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>));
+        backends.push(SpeechDispatcher::new().map(|value| Box::new(value) as Box<dyn Backend>));
       }
       #[cfg(target_os = "macos")]
       {
-        synthesizers.push(
-          AvSpeechSynthesizer::new().map(|value| Box::new(value) as Box<dyn SpeechSynthesizer>),
-        );
+        backends.push(AvSpeechSynthesizer::new().map(|value| Box::new(value) as Box<dyn Backend>));
       }
-      SYNTHESIZERS.set(
-        synthesizers
+      BACKENDS.set(
+        backends
           .into_iter()
           .flatten()
-          .map(|synthesizer| (synthesizer.data().name, synthesizer))
+          .map(|backend| (backend.name(), backend))
           .collect(),
       );
       Ok(())
@@ -82,41 +79,41 @@ pub fn initialize() -> Result<(), SpeechError> {
   });
   result_rx
     .recv()
-    .map_err(SpeechError::into_initialize_failed)?
+    .map_err(OutputError::into_initialize_failed)?
 }
 pub fn perform_operation(closure: Operation) -> OperationResult {
   let (result_tx, result_rx) = mpsc::channel();
   OPERATION_TX
     .get()
-    .ok_or(SpeechError::into_unknown(anyhow!(
+    .ok_or(OutputError::into_unknown(anyhow!(
       "OPERATION_TX contains no channel"
     )))?
     .send((closure, result_tx))
-    .map_err(SpeechError::into_unknown)?;
-  result_rx.recv().map_err(SpeechError::into_unknown)?
+    .map_err(OutputError::into_unknown)?;
+  result_rx.recv().map_err(OutputError::into_unknown)?
 }
-fn internal_list_voices() -> Result<Vec<Voice>, SpeechError> {
-  SYNTHESIZERS.with_borrow(|synthesizers| {
-    let voices = synthesizers
+fn internal_list_voices() -> Result<Vec<Voice>, OutputError> {
+  BACKENDS.with_borrow(|backends| {
+    let voices = backends
       .values()
-      .flat_map(|synthesizer| synthesizer.list_voices())
+      .flat_map(|backend| backend.list_voices())
       .flatten()
       .collect::<Vec<Voice>>();
     Ok(voices)
   })
 }
-pub fn list_voices() -> Result<Vec<Voice>, SpeechError> {
+pub fn list_voices() -> Result<Vec<Voice>, OutputError> {
   let closure = || Ok(Box::new(internal_list_voices()?) as OperationOk);
   let result = perform_operation(Box::new(closure))?
     .downcast()
-    .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to downcast received return value")))?;
+    .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
   Ok(*result)
 }
 fn filter_synthesizers(
   synthesizer: Option<&str>,
   voice: Option<&str>,
   language: Option<&str>,
-) -> Result<String, SpeechError> {
+) -> Result<String, OutputError> {
   let synthesizer = match (synthesizer, voice, language) {
     (Some(synthesizer), _, _) => synthesizer.to_owned(),
     (None, voice_name, language) => {
@@ -133,9 +130,9 @@ fn filter_synthesizers(
       voices
         .first()
         .ok_or(match (voice, language) {
-          (None, None) => SpeechError::NoVoices,
-          (Some(voice), _) => SpeechError::into_voice_not_found(voice),
-          (None, Some(language)) => SpeechError::into_language_not_found(language),
+          (None, None) => OutputError::NoVoices,
+          (Some(voice), _) => OutputError::into_voice_not_found(voice),
+          (None, Some(language)) => OutputError::into_language_not_found(language),
         })?
         .synthesizer
         .name
@@ -144,19 +141,19 @@ fn filter_synthesizers(
   };
   Ok(synthesizer)
 }
-fn check_parameters(
+fn check_speech_parameters(
   rate: Option<u8>,
   volume: Option<u8>,
   pitch: Option<u8>,
-) -> Result<(), SpeechError> {
+) -> Result<(), OutputError> {
   if rate.is_some_and(|rate| rate > 100) {
-    Err(SpeechError::InvalidRate(rate.unwrap()))?;
+    Err(OutputError::InvalidRate(rate.unwrap()))?;
   };
   if volume.is_some_and(|volume| volume > 100) {
-    Err(SpeechError::InvalidVolume(volume.unwrap()))?;
+    Err(OutputError::InvalidVolume(volume.unwrap()))?;
   };
   if pitch.is_some_and(|pitch| pitch > 100) {
-    Err(SpeechError::InvalidPitch(pitch.unwrap()))?;
+    Err(OutputError::InvalidPitch(pitch.unwrap()))?;
   };
   Ok(())
 }
@@ -168,24 +165,24 @@ pub fn speak_to_audio_data(
   volume: Option<u8>,
   pitch: Option<u8>,
   text: &str,
-) -> Result<SpeechResult, SpeechError> {
-  check_parameters(rate, volume, pitch)?;
+) -> Result<SpeechResult, OutputError> {
+  check_speech_parameters(rate, volume, pitch)?;
   let synthesizer = synthesizer.map(|value| value.to_owned());
   let voice = voice.map(|value| value.to_owned());
   let language = language.map(|value| value.to_owned());
   let text = text.to_owned();
   let closure = move || {
-    SYNTHESIZERS.with_borrow(|synthesizers| {
+    BACKENDS.with_borrow(|backends| {
       let synthesizer_name = filter_synthesizers(
         synthesizer.as_deref(),
         voice.as_deref(),
         language.as_deref(),
       )?;
-      let synthesizer = synthesizers
+      let synthesizer = backends
         .get(&synthesizer_name)
-        .ok_or(SpeechError::into_synthesizer_not_found(&synthesizer_name))?;
-      let result = match synthesizer.as_to_audio_data() {
-        None => Err(SpeechError::into_audio_data_not_supported(
+        .ok_or(OutputError::into_backend_not_found(&synthesizer_name))?;
+      let result = match synthesizer.as_speech_synthesizer_to_audio_data() {
+        None => Err(OutputError::into_audio_data_not_supported(
           &synthesizer_name,
         ))?,
         Some(synthesizer) => synthesizer.speak(
@@ -202,7 +199,7 @@ pub fn speak_to_audio_data(
   };
   let result = perform_operation(Box::new(closure))?
     .downcast()
-    .map_err(|_| SpeechError::into_unknown(anyhow!("Failed to downcast received return value")))?;
+    .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
   Ok(*result)
 }
 pub fn speak_to_audio_output(
@@ -214,27 +211,27 @@ pub fn speak_to_audio_output(
   pitch: Option<u8>,
   text: &str,
   interrupt: bool,
-) -> Result<(), SpeechError> {
-  check_parameters(rate, volume, pitch)?;
+) -> Result<(), OutputError> {
+  check_speech_parameters(rate, volume, pitch)?;
   let synthesizer = synthesizer.map(|value| value.to_owned());
   let voice = voice.map(|value| value.to_owned());
   let language = language.map(|value| value.to_owned());
   let text = text.to_owned();
   let closure = move || {
-    SYNTHESIZERS.with_borrow(|synthesizers| {
+    BACKENDS.with_borrow(|backends| {
       let synthesizer_name = filter_synthesizers(
         synthesizer.as_deref(),
         voice.as_deref(),
         language.as_deref(),
       )?;
-      let synthesizer = synthesizers
+      let synthesizer = backends
         .get(&synthesizer_name)
-        .ok_or(SpeechError::into_synthesizer_not_found(&synthesizer_name))?;
+        .ok_or(OutputError::into_backend_not_found(&synthesizer_name))?;
       match (
-        synthesizer.as_to_audio_data(),
-        synthesizer.as_to_audio_output(),
+        synthesizer.as_speech_synthesizer_to_audio_data(),
+        synthesizer.as_speech_synthesizer_to_audio_output(),
       ) {
-        (None, None) => Err(SpeechError::into_speech_not_supported(&synthesizer_name))?,
+        (None, None) => Err(OutputError::into_speech_not_supported(&synthesizer_name))?,
         (Some(synthesizer), None) => {
           let result = synthesizer.speak(
             voice.as_deref(),
@@ -253,12 +250,12 @@ pub fn speak_to_audio_output(
           if interrupt {
             SINK
               .get()
-              .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+              .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
               .stop();
           };
           SINK
             .get()
-            .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+            .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
             .append(source)
         }
         (_, Some(synthesizer)) => synthesizer.speak(
@@ -277,23 +274,23 @@ pub fn speak_to_audio_output(
   perform_operation(Box::new(closure))?;
   Ok(())
 }
-pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), SpeechError> {
+pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), OutputError> {
   let synthesizer = synthesizer.map(|value| value.to_owned());
   let closure = move || {
-    SYNTHESIZERS.with_borrow(|synthesizers| {
+    BACKENDS.with_borrow(|backends| {
       match synthesizer {
         Some(synthesizer_name) => {
-          let synthesizer = synthesizers
+          let synthesizer = backends
             .get(&synthesizer_name)
-            .ok_or(SpeechError::into_synthesizer_not_found(&synthesizer_name))?;
+            .ok_or(OutputError::into_backend_not_found(&synthesizer_name))?;
           match (
-            synthesizer.as_to_audio_data(),
-            synthesizer.as_to_audio_output(),
+            synthesizer.as_speech_synthesizer_to_audio_data(),
+            synthesizer.as_speech_synthesizer_to_audio_output(),
           ) {
-            (None, None) => Err(SpeechError::into_speech_not_supported(&synthesizer_name))?,
+            (None, None) => Err(OutputError::into_speech_not_supported(&synthesizer_name))?,
             (Some(_), None) => SINK
               .get()
-              .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+              .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
               .stop(),
             (_, Some(synthesizer)) => synthesizer.stop_speech()?,
           }
@@ -301,11 +298,11 @@ pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), SpeechError> {
         None => {
           SINK
             .get()
-            .ok_or(SpeechError::into_unknown(anyhow!("SINK contains nothing")))?
+            .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
             .stop();
-          for synthesizer in synthesizers
+          for synthesizer in backends
             .iter()
-            .flat_map(|synthesizer| synthesizer.1.as_to_audio_output())
+            .flat_map(|backend| backend.1.as_speech_synthesizer_to_audio_output())
           {
             let _result = synthesizer.stop_speech();
           }
