@@ -7,12 +7,16 @@ pub enum OutputError {
   AudioDataNotSupported(String),
   #[error("The backend {0} does not support speech")]
   SpeechNotSupported(String),
+  #[error("The backend {0} does not support Braille")]
+  BrailleNotSupported(String),
   #[error("No voice was found with the name {0}")]
   VoiceNotFound(String),
   #[error("No voice was found with the language {0}")]
   LanguageNotFound(String),
   #[error("No voices were found")]
   NoVoices,
+  #[error("No Braille backends were found")]
+  NoBrailleBackends,
   #[error("Speech rate ({0}) is not between 0 and 100")]
   InvalidRate(u8),
   #[error("Speech volume ({0}) is not between 0 and 100")]
@@ -49,6 +53,9 @@ impl OutputError {
   }
   pub fn into_speech_not_supported(backend: &str) -> Self {
     OutputError::SpeechNotSupported(backend.to_owned())
+  }
+  pub fn into_braille_not_supported(backend: &str) -> Self {
+    OutputError::BrailleNotSupported(backend.to_owned())
   }
   pub fn into_voice_not_found(voice: &str) -> Self {
     OutputError::VoiceNotFound(voice.to_owned())
