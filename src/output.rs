@@ -114,7 +114,6 @@ pub fn list_braille_backends() -> Result<Vec<BrailleBackendMetadata>, OutputErro
     BACKENDS.with_borrow(|backends| {
       let backends = backends
         .values()
-        .filter(|backend| backend.as_braille_backend().is_some())
         .flat_map(|backend| backend.braille_metadata())
         .collect::<Vec<BrailleBackendMetadata>>();
       Ok(Box::new(backends) as OperationOk)
@@ -366,4 +365,27 @@ pub fn braille(backend: Option<&str>, text: &str) -> Result<(), OutputError> {
   };
   perform_operation(Box::new(closure))?;
   Ok(())
+}
+pub fn output(
+  synthesizer: Option<&str>,
+  voice: Option<&str>,
+  language: Option<&str>,
+  rate: Option<u8>,
+  volume: Option<u8>,
+  pitch: Option<u8>,
+  braille_backend: Option<&str>,
+  text: &str,
+  interrupt: bool,
+) -> Result<(), OutputError> {
+  speak_to_audio_output(
+    synthesizer,
+    voice,
+    language,
+    rate,
+    volume,
+    pitch,
+    text,
+    interrupt,
+  )?;
+  braille(braille_backend, text)
 }
