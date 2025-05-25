@@ -81,7 +81,7 @@ pub fn initialize() -> Result<(), OutputError> {
     .recv()
     .map_err(OutputError::into_initialize_failed)?
 }
-pub fn perform_operation(closure: Operation) -> OperationResult {
+fn perform_operation(closure: Operation) -> OperationResult {
   let (result_tx, result_rx) = mpsc::channel();
   OPERATION_TX
     .get()
