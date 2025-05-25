@@ -1,50 +1,70 @@
 use crate::*;
-use ::jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
-use ::jni::sys::jbyte;
+use ::jni::objects::*;
+use ::jni::sys::*;
 use ::jni::JNIEnv;
 #[no_mangle]
-pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native_initialize<
-  'local,
->(
+pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
   _env: JNIEnv<'local>,
   _class: JClass<'local>,
 ) {
   initialize().unwrap()
 }
 #[no_mangle]
-pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native_listVoices<
-  'local,
->(
+pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
   mut env: JNIEnv<'local>,
   _class: JClass<'local>,
 ) -> JObjectArray<'local> {
   let voices = list_voices().unwrap();
-  let voice_class = env
-    .find_class("dev/emassey0135/audionavigation/client/speech/Voice")
+  let voice_class = env.find_class("org/mcaccess/whisprs/Voice").unwrap();
+  let speech_synthesizer_metadata_class = env
+    .find_class("org/mcaccess/whisprs/SpeechSynthesizerMetadata")
     .unwrap();
+  let string_class = env.find_class("java/lang/String").unwrap();
   let voices = voices
     .into_iter()
     .map(|voice| {
-      let synthesizer = env.new_string(&voice.synthesizer.name).unwrap();
-      let display_name = env.new_string(&voice.display_name).unwrap();
-      let name = env.new_string(&voice.name).unwrap();
-      let language = env
-        .new_string(
-          voice
-            .languages
-            .first()
-            .map_or("none".to_owned(), |string| string.to_owned()),
+      let synthesizer_name = env.new_string(&voice.synthesizer.name).unwrap();
+      let synthesizer_supports_speaking_to_audio_data = if voice.synthesizer.supports_speaking_to_audio_data { JNI_TRUE } else { JNI_FALSE };
+      let synthesizer_supports_speech_parameters = if voice.synthesizer.supports_speech_parameters { JNI_TRUE } else { JNI_FALSE };
+      let synthesizer = env
+        .new_object(
+          &speech_synthesizer_metadata_class,
+          "(Ljava/lang/String;ZZ)V",
+          &[
+            JValue::Object(&synthesizer_name),
+            JValue::Bool(synthesizer_supports_speaking_to_audio_data),
+            JValue::Bool(synthesizer_supports_speech_parameters),
+          ],
         )
         .unwrap();
+      let display_name = env.new_string(&voice.display_name).unwrap();
+      let name = env.new_string(&voice.name).unwrap();
+      let languages = env
+        .new_object_array(
+          voice.languages.len().try_into().unwrap(),
+          &string_class,
+          JObject::null(),
+        )
+        .unwrap();
+      for (index, language) in voice.languages.iter().enumerate() {
+        let language = env
+          .new_string(language)
+          .unwrap();
+        env
+          .set_object_array_element(&languages, index.try_into().unwrap(), language)
+          .unwrap();
+      }
+      let priority = voice.priority as i8;
       env
         .new_object(
           &voice_class,
-          "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+          "(Lorg/mcaccess/whisprs/SpeechSynthesizerMetadata;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;B)V",
           &[
             JValue::Object(&synthesizer),
             JValue::Object(&display_name),
             JValue::Object(&name),
-            JValue::Object(&language),
+            JValue::Object(&languages),
+            JValue::Byte(priority),
           ],
         )
         .unwrap()
@@ -53,7 +73,7 @@ pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native
   let array = env
     .new_object_array(
       voices.len().try_into().unwrap(),
-      voice_class,
+      &voice_class,
       JObject::null(),
     )
     .unwrap();
@@ -65,28 +85,71 @@ pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native
   array
 }
 #[no_mangle]
-pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native_speak<'local>(
+pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speak<'local>(
   mut env: JNIEnv<'local>,
   _class: JClass<'local>,
   synthesizer: JString<'local>,
   voice: JString<'local>,
   language: JString<'local>,
-  rate: jbyte,
-  volume: jbyte,
-  pitch: jbyte,
+  rate: JObject<'local>,
+  volume: JObject<'local>,
+  pitch: JObject<'local>,
   text: JString<'local>,
 ) -> JObject<'local> {
-  let synthesizer: String = env.get_string(&synthesizer).unwrap().into();
-  let voice: String = env.get_string(&voice).unwrap().into();
-  let language: String = env.get_string(&language).unwrap().into();
+  let null = JObject::null();
+  let synthesizer: Option<String> = if env.is_same_object(&synthesizer, &null).unwrap() {
+    None
+  } else {
+    Some(env.get_string(&synthesizer).unwrap().into())
+  };
+  let voice: Option<String> = if env.is_same_object(&voice, &null).unwrap() {
+    None
+  } else {
+    Some(env.get_string(&voice).unwrap().into())
+  };
+  let language: Option<String> = if env.is_same_object(&language, &null).unwrap() {
+    None
+  } else {
+    Some(env.get_string(&language).unwrap().into())
+  };
+  let rate: Option<u8> = if env.is_same_object(&rate, &null).unwrap() {
+    None
+  } else {
+    Some(
+      env
+        .call_method(&rate, "byteValue", "()B", &[])
+        .unwrap()
+        .b()
+        .unwrap() as u8,
+    )
+  };
+  let volume: Option<u8> = if env.is_same_object(&volume, &null).unwrap() {
+    None
+  } else {
+    Some(
+      env
+        .call_method(&volume, "byteValue", "()B", &[])
+        .unwrap()
+        .b()
+        .unwrap() as u8,
+    )
+  };
+  let pitch: Option<u8> = if env.is_same_object(&pitch, &null).unwrap() {
+    None
+  } else {
+    Some(
+      env
+        .call_method(&pitch, "byteValue", "()B", &[])
+        .unwrap()
+        .b()
+        .unwrap() as u8,
+    )
+  };
   let text: String = env.get_string(&text).unwrap().into();
-  let rate = Some(rate.try_into().unwrap());
-  let volume = Some(volume.try_into().unwrap());
-  let pitch = Some(pitch.try_into().unwrap());
   let result = speak_to_audio_data(
-    Some(&synthesizer),
-    Some(&voice),
-    Some(&language),
+    synthesizer.as_deref(),
+    voice.as_deref(),
+    language.as_deref(),
     rate,
     volume,
     pitch,
@@ -94,9 +157,7 @@ pub extern "system" fn Java_dev_emassey0135_audionavigation_client_speech_Native
   )
   .unwrap();
   let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
-  let speech_result_class = env
-    .find_class("dev/emassey0135/audionavigation/client/speech/SpeechResult")
-    .unwrap();
+  let speech_result_class = env.find_class("org/mcaccess/whisprs/SpeechResult").unwrap();
   env
     .new_object(
       &speech_result_class,
