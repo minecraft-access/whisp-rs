@@ -32,7 +32,7 @@ pub trait Backend {
       }),
       (None, Some(synthesizer)) => Some(SpeechSynthesizerMetadata {
         name: self.name(),
-        supports_speaking_to_audio_data: true,
+        supports_speaking_to_audio_data: false,
         supports_speech_parameters: synthesizer.supports_speech_parameters(),
       }),
     }
