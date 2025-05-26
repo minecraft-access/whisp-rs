@@ -1,27 +1,38 @@
-use crate::*;
 use crate::error::OutputError;
+use crate::*;
 use ::jni::objects::*;
 use ::jni::sys::*;
 use ::jni::JNIEnv;
 fn error_to_exception_class(error: &OutputError) -> String {
-  "org/whisprs/error/".to_owned() + match error {
-    OutputError::BackendNotFound(_) => "BackendNotFoundException",
-    OutputError::AudioDataNotSupported(_) => "AudioDataNotSupportedException",
-    OutputError::SpeechNotSupported(_) => "SpeechNotSupportedException",
-    OutputError::BrailleNotSupported(_) => "BrailleNotSupportedException",
-    OutputError::VoiceNotFound(_) => "VoiceNotFoundException",
-    OutputError::LanguageNotFound(_) => "LanguageNotFoundException",
-    OutputError::NoVoices => "NoVoicesException",
-    OutputError::NoBrailleBackends => "NoBrailleBackendsException",
-    OutputError::InvalidRate(_) => "InvalidRateException",
-    OutputError::InvalidVolume(_) => "InvalidVolumeException",
-    OutputError::InvalidPitch(_) => "InvalidPitchException",
-    OutputError::SpeakFailed { backend: _, voice: _, error: _ } => "SpeakFailedException",
-    OutputError::StopSpeechFailed { backend: _, error: _ } => "StopSpeechFailedException",
-    OutputError::BrailleFailed { backend: _, error: _ } => "BrailleFailedException",
-    OutputError::InitializeFailed(_) => "InitializeFailedException",
-    OutputError::Unknown(_) => "UnknownException",
-  }
+  "org/whisprs/error/".to_owned()
+    + match error {
+      OutputError::BackendNotFound(_) => "BackendNotFoundException",
+      OutputError::AudioDataNotSupported(_) => "AudioDataNotSupportedException",
+      OutputError::SpeechNotSupported(_) => "SpeechNotSupportedException",
+      OutputError::BrailleNotSupported(_) => "BrailleNotSupportedException",
+      OutputError::VoiceNotFound(_) => "VoiceNotFoundException",
+      OutputError::LanguageNotFound(_) => "LanguageNotFoundException",
+      OutputError::NoVoices => "NoVoicesException",
+      OutputError::NoBrailleBackends => "NoBrailleBackendsException",
+      OutputError::InvalidRate(_) => "InvalidRateException",
+      OutputError::InvalidVolume(_) => "InvalidVolumeException",
+      OutputError::InvalidPitch(_) => "InvalidPitchException",
+      OutputError::SpeakFailed {
+        backend: _,
+        voice: _,
+        error: _,
+      } => "SpeakFailedException",
+      OutputError::StopSpeechFailed {
+        backend: _,
+        error: _,
+      } => "StopSpeechFailedException",
+      OutputError::BrailleFailed {
+        backend: _,
+        error: _,
+      } => "BrailleFailedException",
+      OutputError::InitializeFailed(_) => "InitializeFailedException",
+      OutputError::Unknown(_) => "UnknownException",
+    }
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
@@ -30,7 +41,10 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
 ) {
   match initialize() {
     Ok(()) => (),
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return;
+    }
   }
 }
 #[no_mangle]
@@ -40,9 +54,14 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
 ) -> JObjectArray<'local> {
   let voices = match list_voices() {
     Ok(voices) => voices,
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return Default::default() },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return Default::default();
+    }
   };
-  let voice_class = env.find_class("org/mcaccess/whisprs/metadata/Voice").unwrap();
+  let voice_class = env
+    .find_class("org/mcaccess/whisprs/metadata/Voice")
+    .unwrap();
   let speech_synthesizer_metadata_class = env
     .find_class("org/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata")
     .unwrap();
@@ -118,9 +137,14 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'lo
 ) -> JObjectArray<'local> {
   let backends = match list_braille_backends() {
     Ok(backends) => backends,
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return Default::default() },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return Default::default();
+    }
   };
-  let braille_backend_class = env.find_class("org/mcaccess/whisprs/metadata/BrailleBackend").unwrap();
+  let braille_backend_class = env
+    .find_class("org/mcaccess/whisprs/metadata/BrailleBackend")
+    .unwrap();
   let backends = backends
     .into_iter()
     .map(|backend| {
@@ -130,10 +154,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'lo
         .new_object(
           &braille_backend_class,
           "(Ljava/lang/String;B)V",
-          &[
-            JValue::Object(&name),
-            JValue::Byte(priority),
-          ],
+          &[JValue::Object(&name), JValue::Byte(priority)],
         )
         .unwrap()
     })
@@ -224,10 +245,15 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local
     &text,
   ) {
     Ok(result) => result,
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return Default::default() },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return Default::default();
+    }
   };
   let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
-  let speech_result_class = env.find_class("org/mcaccess/whisprs/audio/SpeechResult").unwrap();
+  let speech_result_class = env
+    .find_class("org/mcaccess/whisprs/audio/SpeechResult")
+    .unwrap();
   env
     .new_object(
       &speech_result_class,
@@ -318,7 +344,10 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'loc
     interrupt,
   ) {
     Ok(()) => (),
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return;
+    }
   }
 }
 #[no_mangle]
@@ -333,11 +362,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_stopSpeech<'local>(
   } else {
     Some(env.get_string(&synthesizer).unwrap().into())
   };
-  match stop_speech(
-    synthesizer.as_deref(),
-  ) {
+  match stop_speech(synthesizer.as_deref()) {
     Ok(()) => (),
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return;
+    }
   }
 }
 #[no_mangle]
@@ -354,12 +384,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
     Some(env.get_string(&backend).unwrap().into())
   };
   let text: String = env.get_string(&text).unwrap().into();
-  match braille(
-    backend.as_deref(),
-    &text,
-  ) {
+  match braille(backend.as_deref(), &text) {
     Ok(()) => (),
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return;
+    }
   }
 }
 #[no_mangle]
@@ -447,6 +477,9 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
     interrupt,
   ) {
     Ok(()) => (),
-    Err(error) => { env.throw_new(error_to_exception_class(&error), error.to_string()).unwrap(); return },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      return;
+    }
   }
 }
