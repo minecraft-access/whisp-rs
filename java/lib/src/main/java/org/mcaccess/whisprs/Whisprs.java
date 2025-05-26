@@ -2,6 +2,9 @@ package org.mcaccess.whisprs;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.mcaccess.whisprs.audio.SpeechResult;
+import org.mcaccess.whisprs.metadata.BrailleBackendMetadata;
+import org.mcaccess.whisprs.metadata.Voice;
 
 public class Whisprs {
   public static native void initialize();

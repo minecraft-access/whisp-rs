@@ -15,9 +15,9 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
   _class: JClass<'local>,
 ) -> JObjectArray<'local> {
   let voices = list_voices().unwrap();
-  let voice_class = env.find_class("org/mcaccess/whisprs/Voice").unwrap();
+  let voice_class = env.find_class("org/mcaccess/whisprs/metadata/Voice").unwrap();
   let speech_synthesizer_metadata_class = env
-    .find_class("org/mcaccess/whisprs/SpeechSynthesizerMetadata")
+    .find_class("org/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata")
     .unwrap();
   let string_class = env.find_class("java/lang/String").unwrap();
   let voices = voices
@@ -58,7 +58,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
       env
         .new_object(
           &voice_class,
-          "(Lorg/mcaccess/whisprs/SpeechSynthesizerMetadata;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;B)V",
+          "(Lorg/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;B)V",
           &[
             JValue::Object(&synthesizer),
             JValue::Object(&display_name),
@@ -90,7 +90,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'lo
   _class: JClass<'local>,
 ) -> JObjectArray<'local> {
   let backends = list_braille_backends().unwrap();
-  let braille_backend_class = env.find_class("org/mcaccess/whisprs/BrailleBackend").unwrap();
+  let braille_backend_class = env.find_class("org/mcaccess/whisprs/metadata/BrailleBackend").unwrap();
   let backends = backends
     .into_iter()
     .map(|backend| {
@@ -195,7 +195,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local
   )
   .unwrap();
   let buffer = env.byte_array_from_slice(&result.pcm).unwrap();
-  let speech_result_class = env.find_class("org/mcaccess/whisprs/SpeechResult").unwrap();
+  let speech_result_class = env.find_class("org/mcaccess/whisprs/audio/SpeechResult").unwrap();
   env
     .new_object(
       &speech_result_class,

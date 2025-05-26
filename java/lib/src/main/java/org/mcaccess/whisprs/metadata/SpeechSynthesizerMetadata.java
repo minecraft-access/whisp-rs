@@ -1,4 +1,4 @@
-package org.mcaccess.whisprs;
+package org.mcaccess.whisprs.metadata;
 
 import org.jetbrains.annotations.NotNull;
 

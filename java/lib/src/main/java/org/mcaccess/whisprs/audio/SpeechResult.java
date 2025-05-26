@@ -1,4 +1,4 @@
-package org.mcaccess.whisprs;
+package org.mcaccess.whisprs.audio;
 
 import org.jetbrains.annotations.NotNull;
 
