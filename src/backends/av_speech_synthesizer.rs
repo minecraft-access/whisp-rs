@@ -41,7 +41,7 @@ fn set_parameters(
           .ok_or(OutputError::into_language_not_found(language))?;
         utterance.setVoice(Some(&voice));
       }
-    };
+    }
     let minimum_rate: f32 = AVSpeechUtteranceMinimumSpeechRate;
     let maximum_rate: f32 = AVSpeechUtteranceMaximumSpeechRate;
     let rate = f32::from(rate.unwrap_or(50));
@@ -180,7 +180,7 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
               sample_rate2
                 .set(format.sampleRate() as u32)
                 .map_err(|_| OutputError::into_unknown(anyhow!("Failed to set sample rate")))?;
-            };
+            }
             Ok(())
           };
         done_tx.send(closure()).unwrap();
@@ -241,7 +241,7 @@ impl SpeechSynthesizerToAudioOutput for AvSpeechSynthesizer {
             OutputError::into_unknown(anyhow!("Failed to lock AVSpeechSynthesizer instance"))
           })?
           .stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
-      };
+      }
       self
         .synthesizer
         .lock()
