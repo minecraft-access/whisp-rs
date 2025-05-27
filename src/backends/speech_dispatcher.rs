@@ -95,6 +95,8 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
   fn supports_speech_parameters(&self) -> bool {
     true
   }
+  #[allow(clippy::cast_possible_wrap)]
+  #[allow(clippy::too_many_lines)]
   fn speak(
     &self,
     voice: Option<&str>,

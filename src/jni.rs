@@ -81,6 +81,7 @@ fn jni_optional_string_to_rust(
   };
   Ok(string)
 }
+#[allow(clippy::cast_sign_loss)]
 fn jni_optional_byte_to_rust(env: &mut JNIEnv, byte: &JObject) -> Result<Option<u8>, OutputError> {
   let null = JObject::null();
   let byte = if env
@@ -166,6 +167,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
   let closure = || initialize();
   throw_exception_when_needed(&mut env, closure());
 }
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
   mut env: JNIEnv<'local>,
@@ -266,6 +268,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizersS
   let result = closure();
   throw_exception_when_needed(&mut env, result)
 }
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'local>(
   mut env: JNIEnv<'local>,

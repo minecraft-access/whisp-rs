@@ -6,10 +6,7 @@ pub mod error;
 mod jni;
 pub mod metadata;
 use crate::audio::SpeechResult;
-use crate::backends::{
-  espeak_ng, speech_dispatcher, Backend, BrailleBackend, SpeechSynthesizerToAudioData,
-  SpeechSynthesizerToAudioOutput,
-};
+use crate::backends::{espeak_ng, speech_dispatcher, Backend, BrailleBackend};
 use crate::error::OutputError;
 use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 use anyhow::anyhow;
@@ -438,14 +435,10 @@ pub fn output(
   );
   let braille_result = braille(braille_backend, text);
   match (speech_result, braille_result) {
-    (Ok(()), Ok(())) => Ok(()),
     (Err(OutputError::NoVoices), Err(OutputError::NoBrailleBackends)) => {
       Err(OutputError::NoBackends)
     }
-    (result, Err(OutputError::NoBrailleBackends)) => result,
-    (Err(OutputError::NoVoices), result) => result,
-    (result, Ok(())) => result,
-    (Ok(()), result) => result,
-    (result, _) => result,
+    (Err(OutputError::NoVoices) | Ok(()), right) => right,
+    (left, _) => left,
   }
 }

@@ -164,6 +164,7 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
   fn supports_speech_parameters(&self) -> bool {
     true
   }
+  #[allow(clippy::cast_possible_truncation)]
   fn speak(
     &self,
     voice: Option<&str>,
@@ -271,6 +272,8 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
     })
   }
 }
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
 unsafe extern "C" fn synth_callback(
   wav: *mut c_short,
   sample_count: c_int,
