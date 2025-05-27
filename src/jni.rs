@@ -36,25 +36,71 @@ fn error_to_exception_class(error: &OutputError) -> String {
       OutputError::Unknown(_) => "UnknownException",
     }
 }
+fn throw_exception_when_needed<T: std::default::Default>(
+  env: &mut JNIEnv,
+  result: Result<T, OutputError>,
+) -> T {
+  match result {
+    Ok(value) => value,
+    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
+      Some(Error::JavaException) => Default::default(),
+      _ => {
+        let error = OutputError::into_unknown(error);
+        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+        Default::default()
+      }
+    },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      Default::default()
+    }
+  }
+}
+fn jni_optional_string_to_rust(
+  env: &mut JNIEnv,
+  string: &JString,
+) -> Result<Option<String>, OutputError> {
+  let null = JObject::null();
+  let string = if env
+    .is_same_object(string, &null)
+    .map_err(OutputError::into_unknown)?
+  {
+    None
+  } else {
+    Some(
+      env
+        .get_string(string)
+        .map_err(OutputError::into_unknown)?
+        .into(),
+    )
+  };
+  Ok(string)
+}
+fn jni_optional_byte_to_rust(env: &mut JNIEnv, byte: &JObject) -> Result<Option<u8>, OutputError> {
+  let null = JObject::null();
+  let byte = if env
+    .is_same_object(byte, &null)
+    .map_err(OutputError::into_unknown)?
+  {
+    None
+  } else {
+    Some(
+      env
+        .call_method(byte, "byteValue", "()B", &[])
+        .map_err(OutputError::into_unknown)?
+        .b()
+        .map_err(OutputError::into_unknown)? as u8,
+    )
+  };
+  Ok(byte)
+}
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
   mut env: JNIEnv<'local>,
   _class: JClass<'local>,
 ) {
   let closure = || initialize();
-  match closure() {
-    Ok(()) => (),
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => (),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-    }
-  }
+  throw_exception_when_needed(&mut env, closure())
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
@@ -66,46 +112,9 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
   needs_audio_data: jboolean,
 ) -> JObjectArray<'local> {
   let mut closure = || {
-    let null = JObject::null();
-    let synthesizer: Option<String> = if env
-      .is_same_object(&synthesizer, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&synthesizer)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let name: Option<String> = if env
-      .is_same_object(&name, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&name)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let language: Option<String> = if env
-      .is_same_object(&language, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&language)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
+    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
+    let name = jni_optional_string_to_rust(&mut env, &name)?;
+    let language = jni_optional_string_to_rust(&mut env, &language)?;
     let needs_audio_data: bool = needs_audio_data != JNI_FALSE;
     let voices = list_voices(
       synthesizer.as_deref(),
@@ -186,21 +195,8 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
     }
     Ok(array)
   };
-  match closure() {
-    Ok(voices) => voices,
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => Default::default(),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        Default::default()
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      Default::default()
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizers<'local>(
@@ -260,21 +256,8 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizers<
     }
     Ok(array)
   };
-  match closure() {
-    Ok(synthesizers) => synthesizers,
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => Default::default(),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        Default::default()
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      Default::default()
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizersSupportingAudioData<
@@ -336,21 +319,8 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizersS
     }
     Ok(array)
   };
-  match closure() {
-    Ok(synthesizers) => synthesizers,
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => Default::default(),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        Default::default()
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      Default::default()
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'local>(
@@ -397,21 +367,8 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'lo
     }
     Ok(array)
   };
-  match closure() {
-    Ok(backends) => backends,
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => Default::default(),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        Default::default()
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      Default::default()
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local>(
@@ -426,88 +383,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local
   text: JString<'local>,
 ) -> JObject<'local> {
   let mut closure = || {
-    let null = JObject::null();
-    let synthesizer: Option<String> = if env
-      .is_same_object(&synthesizer, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&synthesizer)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let voice: Option<String> = if env
-      .is_same_object(&voice, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&voice)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let language: Option<String> = if env
-      .is_same_object(&language, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&language)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let rate: Option<u8> = if env
-      .is_same_object(&rate, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&rate, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
-    let volume: Option<u8> = if env
-      .is_same_object(&volume, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&volume, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
-    let pitch: Option<u8> = if env
-      .is_same_object(&pitch, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&pitch, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
+    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
+    let voice = jni_optional_string_to_rust(&mut env, &voice)?;
+    let language = jni_optional_string_to_rust(&mut env, &language)?;
+    let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
+    let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
+    let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
     let text: String = env
       .get_string(&text)
       .map_err(OutputError::into_unknown)?
@@ -545,21 +426,8 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local
       .map_err(OutputError::into_unknown)?;
     Ok(result)
   };
-  match closure() {
-    Ok(result) => result,
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => Default::default(),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        Default::default()
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      Default::default()
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'local>(
@@ -575,88 +443,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'loc
   interrupt: jboolean,
 ) {
   let mut closure = || {
-    let null = JObject::null();
-    let synthesizer: Option<String> = if env
-      .is_same_object(&synthesizer, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&synthesizer)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let voice: Option<String> = if env
-      .is_same_object(&voice, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&voice)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let language: Option<String> = if env
-      .is_same_object(&language, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&language)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let rate: Option<u8> = if env
-      .is_same_object(&rate, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&rate, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
-    let volume: Option<u8> = if env
-      .is_same_object(&volume, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&volume, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
-    let pitch: Option<u8> = if env
-      .is_same_object(&pitch, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&pitch, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
+    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
+    let voice = jni_optional_string_to_rust(&mut env, &voice)?;
+    let language = jni_optional_string_to_rust(&mut env, &language)?;
+    let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
+    let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
+    let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
     let text: String = env
       .get_string(&text)
       .map_err(OutputError::into_unknown)?
@@ -673,19 +465,8 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'loc
       interrupt,
     )
   };
-  match closure() {
-    Ok(()) => (),
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => (),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_stopSpeech<'local>(
@@ -694,35 +475,11 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_stopSpeech<'local>(
   synthesizer: JString<'local>,
 ) {
   let mut closure = || {
-    let null = JObject::null();
-    let synthesizer: Option<String> = if env
-      .is_same_object(&synthesizer, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&synthesizer)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
+    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
     stop_speech(synthesizer.as_deref())
   };
-  match closure() {
-    Ok(()) => (),
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => (),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
@@ -732,39 +489,15 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
   text: JString<'local>,
 ) {
   let mut closure = || {
-    let null = JObject::null();
-    let backend: Option<String> = if env
-      .is_same_object(&backend, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&backend)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
+    let backend = jni_optional_string_to_rust(&mut env, &backend)?;
     let text: String = env
       .get_string(&text)
       .map_err(OutputError::into_unknown)?
       .into();
     braille(backend.as_deref(), &text)
   };
-  match closure() {
-    Ok(()) => (),
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => (),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
@@ -781,101 +514,13 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
   interrupt: jboolean,
 ) {
   let mut closure = || {
-    let null = JObject::null();
-    let synthesizer: Option<String> = if env
-      .is_same_object(&synthesizer, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&synthesizer)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let voice: Option<String> = if env
-      .is_same_object(&voice, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&voice)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let language: Option<String> = if env
-      .is_same_object(&language, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&language)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
-    let rate: Option<u8> = if env
-      .is_same_object(&rate, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&rate, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
-    let volume: Option<u8> = if env
-      .is_same_object(&volume, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&volume, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
-    let pitch: Option<u8> = if env
-      .is_same_object(&pitch, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .call_method(&pitch, "byteValue", "()B", &[])
-          .map_err(OutputError::into_unknown)?
-          .b()
-          .map_err(OutputError::into_unknown)? as u8,
-      )
-    };
-    let braille_backend: Option<String> = if env
-      .is_same_object(&braille_backend, &null)
-      .map_err(OutputError::into_unknown)?
-    {
-      None
-    } else {
-      Some(
-        env
-          .get_string(&braille_backend)
-          .map_err(OutputError::into_unknown)?
-          .into(),
-      )
-    };
+    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
+    let voice = jni_optional_string_to_rust(&mut env, &voice)?;
+    let language = jni_optional_string_to_rust(&mut env, &language)?;
+    let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
+    let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
+    let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
+    let braille_backend = jni_optional_string_to_rust(&mut env, &braille_backend)?;
     let text: String = env
       .get_string(&text)
       .map_err(OutputError::into_unknown)?
@@ -893,17 +538,6 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
       interrupt,
     )
   };
-  match closure() {
-    Ok(()) => (),
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => (),
-      _ => {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      }
-    },
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-    }
-  }
+  let result = closure();
+  throw_exception_when_needed(&mut env, result)
 }
