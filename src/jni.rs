@@ -48,12 +48,10 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return;
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return;
     }
   }
 }
@@ -148,12 +146,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return Default::default();
+        Default::default()
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return Default::default();
+      Default::default()
     }
   }
 }
@@ -209,12 +207,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'lo
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return Default::default();
+        Default::default()
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return Default::default();
+      Default::default()
     }
   }
 }
@@ -357,12 +355,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return Default::default();
+        Default::default()
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return Default::default();
+      Default::default()
     }
   }
 }
@@ -466,10 +464,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'loc
       .get_string(&text)
       .map_err(OutputError::into_unknown)?
       .into();
-    let interrupt: bool = match interrupt {
-      JNI_FALSE => false,
-      _ => true,
-    };
+    let interrupt: bool = interrupt != JNI_FALSE;
     speak_to_audio_output(
       synthesizer.as_deref(),
       voice.as_deref(),
@@ -488,12 +483,10 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'loc
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return;
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return;
     }
   }
 }
@@ -527,12 +520,10 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_stopSpeech<'local>(
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return;
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return;
     }
   }
 }
@@ -571,12 +562,10 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return;
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return;
     }
   }
 }
@@ -694,10 +683,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
       .get_string(&text)
       .map_err(OutputError::into_unknown)?
       .into();
-    let interrupt: bool = match interrupt {
-      JNI_FALSE => false,
-      _ => true,
-    };
+    let interrupt: bool = interrupt != JNI_FALSE;
     output(
       synthesizer.as_deref(),
       voice.as_deref(),
@@ -717,12 +703,10 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
       _ => {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        return;
       }
     },
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      return;
     }
   }
 }
