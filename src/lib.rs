@@ -92,18 +92,55 @@ fn perform_operation(closure: Operation) -> OperationResult {
     .map_err(OutputError::into_unknown)?;
   result_rx.recv().map_err(OutputError::into_unknown)?
 }
-fn internal_list_voices() -> Result<Vec<Voice>, OutputError> {
+fn internal_list_voices(
+  synthesizer: Option<&str>,
+  name: Option<&str>,
+  language: Option<&str>,
+  needs_audio_data: bool,
+) -> Result<Vec<Voice>, OutputError> {
   BACKENDS.with_borrow(|backends| {
-    let voices = backends
+    let mut voices = backends
       .values()
+      .filter(|backend| {
+        synthesizer
+          .map(|synthesizer| backend.name() == synthesizer)
+          .unwrap_or(true)
+      })
+      .filter(|synthesizer| {
+        !needs_audio_data || synthesizer.as_speech_synthesizer_to_audio_data().is_some()
+      })
       .flat_map(|backend| backend.list_voices())
       .flatten()
+      .filter(|voice| {
+        name.map(|name| voice.name == name).unwrap_or(true)
+          && language
+            .map(|name| {
+              voice.languages.is_empty() || voice.languages.iter().any(|language| language == name)
+            })
+            .unwrap_or(true)
+      })
       .collect::<Vec<Voice>>();
+    voices.sort_unstable_by_key(|voice| voice.priority);
     Ok(voices)
   })
 }
-pub fn list_voices() -> Result<Vec<Voice>, OutputError> {
-  let closure = || Ok(Box::new(internal_list_voices()?) as OperationOk);
+pub fn list_voices(
+  synthesizer: Option<&str>,
+  name: Option<&str>,
+  language: Option<&str>,
+  needs_audio_data: bool,
+) -> Result<Vec<Voice>, OutputError> {
+  let synthesizer = synthesizer.map(|value| value.to_owned());
+  let name = name.map(|value| value.to_owned());
+  let language = language.map(|value| value.to_owned());
+  let closure = move || {
+    Ok(Box::new(internal_list_voices(
+      synthesizer.as_deref(),
+      name.as_deref(),
+      language.as_deref(),
+      needs_audio_data,
+    )?) as OperationOk)
+  };
   let result = perform_operation(Box::new(closure))?
     .downcast()
     .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
@@ -160,25 +197,12 @@ fn filter_synthesizers(
   synthesizer: Option<&str>,
   voice: Option<&str>,
   language: Option<&str>,
-  audio_data_needed: bool,
+  needs_audio_data: bool,
 ) -> Result<String, OutputError> {
   let synthesizer = match (synthesizer, voice, language) {
     (Some(synthesizer), _, _) => synthesizer.to_owned(),
     (None, voice_name, language) => {
-      let mut voices = internal_list_voices()?
-        .into_iter()
-        .filter(|voice| {
-          voice_name.map(|name| voice.name == name).unwrap_or(true)
-            || language
-              .map(|name| {
-                voice.languages.is_empty()
-                  || voice.languages.iter().any(|language| language == name)
-              })
-              .unwrap_or(true)
-        })
-        .filter(|voice| !audio_data_needed || voice.synthesizer.supports_speaking_to_audio_data)
-        .collect::<Vec<Voice>>();
-      voices.sort_unstable_by_key(|voice| voice.priority);
+      let voices = internal_list_voices(None, voice_name, language, needs_audio_data)?;
       voices
         .first()
         .ok_or(match (voice, language) {

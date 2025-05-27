@@ -60,9 +60,59 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
   mut env: JNIEnv<'local>,
   _class: JClass<'local>,
+  synthesizer: JString<'local>,
+  name: JString<'local>,
+  language: JString<'local>,
+  needs_audio_data: jboolean,
 ) -> JObjectArray<'local> {
   let mut closure = || {
-    let voices = list_voices()?;
+    let null = JObject::null();
+    let synthesizer: Option<String> = if env
+      .is_same_object(&synthesizer, &null)
+      .map_err(OutputError::into_unknown)?
+    {
+      None
+    } else {
+      Some(
+        env
+          .get_string(&synthesizer)
+          .map_err(OutputError::into_unknown)?
+          .into(),
+      )
+    };
+    let name: Option<String> = if env
+      .is_same_object(&name, &null)
+      .map_err(OutputError::into_unknown)?
+    {
+      None
+    } else {
+      Some(
+        env
+          .get_string(&name)
+          .map_err(OutputError::into_unknown)?
+          .into(),
+      )
+    };
+    let language: Option<String> = if env
+      .is_same_object(&language, &null)
+      .map_err(OutputError::into_unknown)?
+    {
+      None
+    } else {
+      Some(
+        env
+          .get_string(&language)
+          .map_err(OutputError::into_unknown)?
+          .into(),
+      )
+    };
+    let needs_audio_data: bool = needs_audio_data != JNI_FALSE;
+    let voices = list_voices(
+      synthesizer.as_deref(),
+      name.as_deref(),
+      language.as_deref(),
+      needs_audio_data,
+    )?;
     let voice_class = env
       .find_class("org/mcaccess/whisprs/metadata/Voice")
       .map_err(OutputError::into_unknown)?;

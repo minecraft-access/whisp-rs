@@ -9,7 +9,7 @@ import org.mcaccess.whisprs.metadata.Voice;
 
 public class Whisprs {
   public static native void initialize();
-  public static native @NotNull Voice[] listVoices();
+  public static native @NotNull Voice[] listVoices(@Nullable String synthesizer, @Nullable String voice, @Nullable String language, boolean needsAudioData);
   public static native @NotNull SpeechSynthesizerMetadata[] listSpeechSynthesizers();
   public static native @NotNull SpeechSynthesizerMetadata[] listSpeechSynthesizersSupportingAudioData();
   public static native @NotNull BrailleBackendMetadata[] listBrailleBackends();
