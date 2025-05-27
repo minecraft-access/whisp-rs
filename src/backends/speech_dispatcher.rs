@@ -154,7 +154,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
           .check_status(OK_VOICE_SET)
           .map_err(|err| OutputError::into_speak_failed(&self.name(), voice, err))?;
       }
-    };
+    }
     let rate = rate.unwrap_or(50) as i8;
     let rate = (rate * 2) - 100;
     client
@@ -218,7 +218,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
         .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
         .check_status(OK_CANCELED)
         .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
-    };
+    }
     let lines = text
       .lines()
       .map(std::borrow::ToOwned::to_owned)
