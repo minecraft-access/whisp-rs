@@ -64,17 +64,11 @@ pub fn initialize() -> Result<(), OutputError> {
       }
       #[cfg(target_os = "linux")]
       {
-        backends.push(
-          SpeechDispatcher::new()
-            .map(|value| Box::new(value) as Box<dyn Backend>),
-        );
+        backends.push(SpeechDispatcher::new().map(|value| Box::new(value) as Box<dyn Backend>));
       }
       #[cfg(target_os = "macos")]
       {
-        backends.push(
-          AvSpeechSynthesizer::new()
-            .map(|value| Box::new(value) as Box<dyn Backend>),
-        );
+        backends.push(AvSpeechSynthesizer::new().map(|value| Box::new(value) as Box<dyn Backend>));
       }
       BACKENDS.set(
         backends

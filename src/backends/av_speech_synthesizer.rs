@@ -1,5 +1,7 @@
-use crate::audio::*;
-use crate::backends::*;
+use crate::audio::{SampleFormat, SpeechResult};
+use crate::backends::{
+  Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
 use crate::metadata::Voice;
 use anyhow::anyhow;
@@ -42,13 +44,13 @@ fn set_parameters(
     };
     let minimum_rate: f32 = AVSpeechUtteranceMinimumSpeechRate;
     let maximum_rate: f32 = AVSpeechUtteranceMaximumSpeechRate;
-    let rate = rate.unwrap_or(50) as f32;
+    let rate = f32::from(rate.unwrap_or(50));
     let rate = (rate / 100.0) * (maximum_rate - minimum_rate) + minimum_rate;
     utterance.setRate(rate);
-    let volume = volume.unwrap_or(100) as f32;
+    let volume = f32::from(volume.unwrap_or(100));
     let volume = volume / 100.0;
     utterance.setVolume(volume);
-    let pitch = pitch.unwrap_or(50) as f32;
+    let pitch = f32::from(pitch.unwrap_or(50));
     let pitch = pitch / 100.0;
     let pitch = if pitch < 0.5 {
       pitch * 2.0 * 0.75 + 0.25
@@ -118,6 +120,8 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
   fn supports_speech_parameters(&self) -> bool {
     true
   }
+  #[allow(clippy::cast_possible_truncation)]
+  #[allow(clippy::cast_sign_loss)]
   fn speak(
     &self,
     voice: Option<&str>,
