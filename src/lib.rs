@@ -6,7 +6,20 @@ pub mod error;
 mod jni;
 pub mod metadata;
 use crate::audio::SpeechResult;
-use crate::backends::{espeak_ng, speech_dispatcher, Backend, BrailleBackend};
+#[cfg(target_os = "macos")]
+use crate::backends::av_speech_synthesizer::AvSpeechSynthesizer;
+use crate::backends::espeak_ng::EspeakNg;
+#[cfg(windows)]
+use crate::backends::jaws::Jaws;
+#[cfg(windows)]
+use crate::backends::nvda::Nvda;
+#[cfg(windows)]
+use crate::backends::one_core::OneCore;
+#[cfg(windows)]
+use crate::backends::sapi::Sapi;
+#[cfg(target_os = "linux")]
+use crate::backends::speech_dispatcher::SpeechDispatcher;
+use crate::backends::{Backend, BrailleBackend};
 use crate::error::OutputError;
 use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 use anyhow::anyhow;
@@ -41,25 +54,25 @@ pub fn initialize() -> Result<(), OutputError> {
       let _result = OUTPUT_STREAM.with(|cell| cell.set(Some(output_stream)));
       let _result = SINK.set(sink);
       let mut backends: Vec<Result<Box<dyn Backend>, OutputError>> = Vec::new();
-      backends.push(espeak_ng::EspeakNg::new().map(|value| Box::new(value) as Box<dyn Backend>));
+      backends.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn Backend>));
       #[cfg(windows)]
       {
-        backends.push(sapi::Sapi::new().map(|value| Box::new(value) as Box<dyn Backend>));
-        backends.push(one_core::OneCore::new().map(|value| Box::new(value) as Box<dyn Backend>));
-        backends.push(jaws::Jaws::new().map(|value| Box::new(value) as Box<dyn Backend>));
-        backends.push(nvda::Nvda::new().map(|value| Box::new(value) as Box<dyn Backend>));
+        backends.push(Sapi::new().map(|value| Box::new(value) as Box<dyn Backend>));
+        backends.push(OneCore::new().map(|value| Box::new(value) as Box<dyn Backend>));
+        backends.push(Jaws::new().map(|value| Box::new(value) as Box<dyn Backend>));
+        backends.push(Nvda::new().map(|value| Box::new(value) as Box<dyn Backend>));
       }
       #[cfg(target_os = "linux")]
       {
         backends.push(
-          speech_dispatcher::SpeechDispatcher::new()
+          SpeechDispatcher::new()
             .map(|value| Box::new(value) as Box<dyn Backend>),
         );
       }
       #[cfg(target_os = "macos")]
       {
         backends.push(
-          av_speech_synthesizer::AvSpeechSynthesizer::new()
+          AvSpeechSynthesizer::new()
             .map(|value| Box::new(value) as Box<dyn Backend>),
         );
       }
