@@ -4,11 +4,14 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.mcaccess.whisprs.audio.SpeechResult;
 import org.mcaccess.whisprs.metadata.BrailleBackendMetadata;
+import org.mcaccess.whisprs.metadata.SpeechSynthesizerMetadata;
 import org.mcaccess.whisprs.metadata.Voice;
 
 public class Whisprs {
   public static native void initialize();
   public static native @NotNull Voice[] listVoices();
+  public static native @NotNull SpeechSynthesizerMetadata[] listSpeechSynthesizers();
+  public static native @NotNull SpeechSynthesizerMetadata[] listSpeechSynthesizersSupportingAudioData();
   public static native @NotNull BrailleBackendMetadata[] listBrailleBackends();
   public static native @NotNull SpeechResult speakToAudioData(@Nullable String synthesizer, @Nullable String voice, @Nullable String language, @Nullable Byte rate, @Nullable Byte volume, @Nullable Byte pitch, @NotNull String text);
   public static native void speakToAudioOutput(@Nullable String synthesizer, @Nullable String voice, @Nullable String language, @Nullable Byte rate, @Nullable Byte volume, @Nullable Byte pitch, @NotNull String text, boolean interrupt);

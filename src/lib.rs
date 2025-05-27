@@ -109,6 +109,38 @@ pub fn list_voices() -> Result<Vec<Voice>, OutputError> {
     .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
   Ok(*result)
 }
+pub fn list_speech_synthesizers() -> Result<Vec<SpeechSynthesizerMetadata>, OutputError> {
+  let closure = || {
+    BACKENDS.with_borrow(|backends| {
+      let synthesizers = backends
+        .values()
+        .flat_map(|backend| backend.speech_metadata())
+        .collect::<Vec<SpeechSynthesizerMetadata>>();
+      Ok(Box::new(synthesizers) as OperationOk)
+    })
+  };
+  let result = perform_operation(Box::new(closure))?
+    .downcast()
+    .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
+  Ok(*result)
+}
+pub fn list_speech_synthesizers_supporting_audio_data(
+) -> Result<Vec<SpeechSynthesizerMetadata>, OutputError> {
+  let closure = || {
+    BACKENDS.with_borrow(|backends| {
+      let synthesizers = backends
+        .values()
+        .flat_map(|backend| backend.speech_metadata())
+        .filter(|synthesizer| synthesizer.supports_speaking_to_audio_data)
+        .collect::<Vec<SpeechSynthesizerMetadata>>();
+      Ok(Box::new(synthesizers) as OperationOk)
+    })
+  };
+  let result = perform_operation(Box::new(closure))?
+    .downcast()
+    .map_err(|_| OutputError::into_unknown(anyhow!("Failed to downcast received return value")))?;
+  Ok(*result)
+}
 pub fn list_braille_backends() -> Result<Vec<BrailleBackendMetadata>, OutputError> {
   let closure = || {
     BACKENDS.with_borrow(|backends| {

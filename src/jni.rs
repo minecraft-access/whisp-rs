@@ -87,8 +87,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
             JValue::Bool(synthesizer_supports_speaking_to_audio_data),
             JValue::Bool(synthesizer_supports_speech_parameters),
           ],
-        )
-        ?;
+        )?;
       let display_name = env.new_string(&voice.display_name)?;
       let name = env.new_string(&voice.name)?;
       let languages = env
@@ -96,15 +95,12 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
           voice.languages.len().try_into()?,
           &string_class,
           JObject::null(),
-        )
-        ?;
+        )?;
       for (index, language) in voice.languages.iter().enumerate() {
         let language = env
-          .new_string(language)
-          ?;
+          .new_string(language)?;
         env
-          .set_object_array_element(&languages, index.try_into()?, language)
-          ?;
+          .set_object_array_element(&languages, index.try_into()?, language)?;
       }
       let priority = voice.priority as i8;
       let voice = env
@@ -157,14 +153,164 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
   }
 }
 #[no_mangle]
+pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizers<'local>(
+  mut env: JNIEnv<'local>,
+  _class: JClass<'local>,
+) -> JObjectArray<'local> {
+  let mut closure = || {
+    let synthesizers = list_speech_synthesizers()?;
+    let speech_synthesizer_metadata_class = env
+      .find_class("org/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata")
+      .map_err(OutputError::into_unknown)?;
+    let synthesizers = synthesizers
+      .into_iter()
+      .map(|synthesizer| {
+        let name = env.new_string(&synthesizer.name)?;
+        let supports_speaking_to_audio_data = if synthesizer.supports_speaking_to_audio_data {
+          JNI_TRUE
+        } else {
+          JNI_FALSE
+        };
+        let supports_speech_parameters = if synthesizer.supports_speech_parameters {
+          JNI_TRUE
+        } else {
+          JNI_FALSE
+        };
+        let synthesizer = env.new_object(
+          &speech_synthesizer_metadata_class,
+          "(Ljava/lang/String;ZZ)V",
+          &[
+            JValue::Object(&name),
+            JValue::Bool(supports_speaking_to_audio_data),
+            JValue::Bool(supports_speech_parameters),
+          ],
+        )?;
+        Ok::<_, anyhow::Error>(synthesizer)
+      })
+      .collect::<Result<Vec<JObject>, anyhow::Error>>()
+      .map_err(OutputError::into_unknown)?;
+    let array = env
+      .new_object_array(
+        synthesizers
+          .len()
+          .try_into()
+          .map_err(OutputError::into_unknown)?,
+        &speech_synthesizer_metadata_class,
+        JObject::null(),
+      )
+      .map_err(OutputError::into_unknown)?;
+    for (index, synthesizer) in synthesizers.into_iter().enumerate() {
+      env
+        .set_object_array_element(
+          &array,
+          index.try_into().map_err(OutputError::into_unknown)?,
+          synthesizer,
+        )
+        .map_err(OutputError::into_unknown)?;
+    }
+    Ok(array)
+  };
+  match closure() {
+    Ok(synthesizers) => synthesizers,
+    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
+      Some(Error::JavaException) => Default::default(),
+      _ => {
+        let error = OutputError::into_unknown(error);
+        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+        Default::default()
+      }
+    },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      Default::default()
+    }
+  }
+}
+#[no_mangle]
+pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizersSupportingAudioData<
+  'local,
+>(
+  mut env: JNIEnv<'local>,
+  _class: JClass<'local>,
+) -> JObjectArray<'local> {
+  let mut closure = || {
+    let synthesizers = list_speech_synthesizers_supporting_audio_data()?;
+    let speech_synthesizer_metadata_class = env
+      .find_class("org/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata")
+      .map_err(OutputError::into_unknown)?;
+    let synthesizers = synthesizers
+      .into_iter()
+      .map(|synthesizer| {
+        let name = env.new_string(&synthesizer.name)?;
+        let supports_speaking_to_audio_data = if synthesizer.supports_speaking_to_audio_data {
+          JNI_TRUE
+        } else {
+          JNI_FALSE
+        };
+        let supports_speech_parameters = if synthesizer.supports_speech_parameters {
+          JNI_TRUE
+        } else {
+          JNI_FALSE
+        };
+        let synthesizer = env.new_object(
+          &speech_synthesizer_metadata_class,
+          "(Ljava/lang/String;ZZ)V",
+          &[
+            JValue::Object(&name),
+            JValue::Bool(supports_speaking_to_audio_data),
+            JValue::Bool(supports_speech_parameters),
+          ],
+        )?;
+        Ok::<_, anyhow::Error>(synthesizer)
+      })
+      .collect::<Result<Vec<JObject>, anyhow::Error>>()
+      .map_err(OutputError::into_unknown)?;
+    let array = env
+      .new_object_array(
+        synthesizers
+          .len()
+          .try_into()
+          .map_err(OutputError::into_unknown)?,
+        &speech_synthesizer_metadata_class,
+        JObject::null(),
+      )
+      .map_err(OutputError::into_unknown)?;
+    for (index, synthesizer) in synthesizers.into_iter().enumerate() {
+      env
+        .set_object_array_element(
+          &array,
+          index.try_into().map_err(OutputError::into_unknown)?,
+          synthesizer,
+        )
+        .map_err(OutputError::into_unknown)?;
+    }
+    Ok(array)
+  };
+  match closure() {
+    Ok(synthesizers) => synthesizers,
+    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
+      Some(Error::JavaException) => Default::default(),
+      _ => {
+        let error = OutputError::into_unknown(error);
+        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+        Default::default()
+      }
+    },
+    Err(error) => {
+      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
+      Default::default()
+    }
+  }
+}
+#[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'local>(
   mut env: JNIEnv<'local>,
   _class: JClass<'local>,
 ) -> JObjectArray<'local> {
   let mut closure = || {
     let backends = list_braille_backends()?;
-    let braille_backend_class = env
-      .find_class("org/mcaccess/whisprs/metadata/BrailleBackend")
+    let braille_backend_metadata_class = env
+      .find_class("org/mcaccess/whisprs/metadata/BrailleBackendMetadata")
       .map_err(OutputError::into_unknown)?;
     let backends = backends
       .into_iter()
@@ -172,7 +318,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'lo
         let name = env.new_string(&backend.name)?;
         let priority = backend.priority as i8;
         let backend = env.new_object(
-          &braille_backend_class,
+          &braille_backend_metadata_class,
           "(Ljava/lang/String;B)V",
           &[JValue::Object(&name), JValue::Byte(priority)],
         )?;
@@ -186,7 +332,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'lo
           .len()
           .try_into()
           .map_err(OutputError::into_unknown)?,
-        &braille_backend_class,
+        &braille_backend_metadata_class,
         JObject::null(),
       )
       .map_err(OutputError::into_unknown)?;
