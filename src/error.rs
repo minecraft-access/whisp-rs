@@ -47,24 +47,31 @@ pub enum OutputError {
   Unknown(anyhow::Error),
 }
 impl OutputError {
+  #[must_use]
   pub fn into_backend_not_found(backend: &str) -> Self {
     OutputError::BackendNotFound(backend.to_owned())
   }
+  #[must_use]
   pub fn into_audio_data_not_supported(backend: &str) -> Self {
     OutputError::AudioDataNotSupported(backend.to_owned())
   }
+  #[must_use]
   pub fn into_speech_not_supported(backend: &str) -> Self {
     OutputError::SpeechNotSupported(backend.to_owned())
   }
+  #[must_use]
   pub fn into_braille_not_supported(backend: &str) -> Self {
     OutputError::BrailleNotSupported(backend.to_owned())
   }
+  #[must_use]
   pub fn into_voice_not_found(voice: &str) -> Self {
     OutputError::VoiceNotFound(voice.to_owned())
   }
+  #[must_use]
   pub fn into_language_not_found(language: &str) -> Self {
     OutputError::LanguageNotFound(language.to_owned())
   }
+  #[must_use]
   pub fn into_speak_failed<T>(backend: &str, voice: &str, error: T) -> Self
   where
     T: Into<anyhow::Error>,
@@ -75,6 +82,7 @@ impl OutputError {
       error: error.into(),
     }
   }
+  #[must_use]
   pub fn into_stop_speech_failed<T>(backend: &str, error: T) -> Self
   where
     T: Into<anyhow::Error>,
@@ -84,6 +92,7 @@ impl OutputError {
       error: error.into(),
     }
   }
+  #[must_use]
   pub fn into_braille_failed<T>(backend: &str, error: T) -> Self
   where
     T: Into<anyhow::Error>,
@@ -93,12 +102,14 @@ impl OutputError {
       error: error.into(),
     }
   }
+  #[must_use]
   pub fn into_initialize_failed<T>(error: T) -> Self
   where
     T: Into<anyhow::Error>,
   {
     OutputError::InitializeFailed(error.into())
   }
+  #[must_use]
   pub fn into_unknown<T>(error: T) -> Self
   where
     T: Into<anyhow::Error>,

@@ -11,9 +11,9 @@ pub mod one_core;
 pub mod sapi;
 #[cfg(target_os = "linux")]
 pub mod speech_dispatcher;
-use crate::audio::*;
+use crate::audio::SpeechResult;
 use crate::error::OutputError;
-use crate::metadata::*;
+use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 pub trait Backend {
   fn new() -> Result<Self, OutputError>
   where

@@ -1,14 +1,17 @@
 #![deny(clippy::all)]
-//#![deny(clippy::pedantic)]
+#![deny(clippy::pedantic)]
 pub mod audio;
 mod backends;
 pub mod error;
 mod jni;
 pub mod metadata;
-use crate::audio::*;
-use crate::backends::*;
+use crate::audio::SpeechResult;
+use crate::backends::{
+  espeak_ng, speech_dispatcher, Backend, BrailleBackend, SpeechSynthesizerToAudioData,
+  SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
-use crate::metadata::*;
+use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 use anyhow::anyhow;
 use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
 use std::any::Any;
@@ -101,23 +104,17 @@ fn internal_list_voices(
   BACKENDS.with_borrow(|backends| {
     let mut voices = backends
       .values()
-      .filter(|backend| {
-        synthesizer
-          .map(|synthesizer| backend.name() == synthesizer)
-          .unwrap_or(true)
-      })
+      .filter(|backend| synthesizer.map_or(true, |synthesizer| backend.name() == synthesizer))
       .filter(|synthesizer| {
         !needs_audio_data || synthesizer.as_speech_synthesizer_to_audio_data().is_some()
       })
       .flat_map(|backend| backend.list_voices())
       .flatten()
       .filter(|voice| {
-        name.map(|name| voice.name == name).unwrap_or(true)
-          && language
-            .map(|name| {
-              voice.languages.is_empty() || voice.languages.iter().any(|language| language == name)
-            })
-            .unwrap_or(true)
+        name.map_or(true, |name| voice.name == name)
+          && language.map_or(true, |name| {
+            voice.languages.is_empty() || voice.languages.iter().any(|language| language == name)
+          })
       })
       .collect::<Vec<Voice>>();
     voices.sort_unstable_by_key(|voice| voice.priority);
@@ -130,9 +127,9 @@ pub fn list_voices(
   language: Option<&str>,
   needs_audio_data: bool,
 ) -> Result<Vec<Voice>, OutputError> {
-  let synthesizer = synthesizer.map(|value| value.to_owned());
-  let name = name.map(|value| value.to_owned());
-  let language = language.map(|value| value.to_owned());
+  let synthesizer = synthesizer.map(std::borrow::ToOwned::to_owned);
+  let name = name.map(std::borrow::ToOwned::to_owned);
+  let language = language.map(std::borrow::ToOwned::to_owned);
   let closure = move || {
     Ok(Box::new(internal_list_voices(
       synthesizer.as_deref(),
@@ -151,7 +148,7 @@ pub fn list_speech_synthesizers() -> Result<Vec<SpeechSynthesizerMetadata>, Outp
     BACKENDS.with_borrow(|backends| {
       let synthesizers = backends
         .values()
-        .flat_map(|backend| backend.speech_metadata())
+        .filter_map(|backend| backend.speech_metadata())
         .collect::<Vec<SpeechSynthesizerMetadata>>();
       Ok(Box::new(synthesizers) as OperationOk)
     })
@@ -167,7 +164,7 @@ pub fn list_speech_synthesizers_supporting_audio_data(
     BACKENDS.with_borrow(|backends| {
       let synthesizers = backends
         .values()
-        .flat_map(|backend| backend.speech_metadata())
+        .filter_map(|backend| backend.speech_metadata())
         .filter(|synthesizer| synthesizer.supports_speaking_to_audio_data)
         .collect::<Vec<SpeechSynthesizerMetadata>>();
       Ok(Box::new(synthesizers) as OperationOk)
@@ -183,7 +180,7 @@ pub fn list_braille_backends() -> Result<Vec<BrailleBackendMetadata>, OutputErro
     BACKENDS.with_borrow(|backends| {
       let backends = backends
         .values()
-        .flat_map(|backend| backend.braille_metadata())
+        .filter_map(|backend| backend.braille_metadata())
         .collect::<Vec<BrailleBackendMetadata>>();
       Ok(Box::new(backends) as OperationOk)
     })
@@ -243,9 +240,9 @@ pub fn speak_to_audio_data(
   text: &str,
 ) -> Result<SpeechResult, OutputError> {
   check_speech_parameters(rate, volume, pitch)?;
-  let synthesizer = synthesizer.map(|value| value.to_owned());
-  let voice = voice.map(|value| value.to_owned());
-  let language = language.map(|value| value.to_owned());
+  let synthesizer = synthesizer.map(std::borrow::ToOwned::to_owned);
+  let voice = voice.map(std::borrow::ToOwned::to_owned);
+  let language = language.map(std::borrow::ToOwned::to_owned);
   let text = text.to_owned();
   let closure = move || {
     BACKENDS.with_borrow(|backends| {
@@ -290,9 +287,9 @@ pub fn speak_to_audio_output(
   interrupt: bool,
 ) -> Result<(), OutputError> {
   check_speech_parameters(rate, volume, pitch)?;
-  let synthesizer = synthesizer.map(|value| value.to_owned());
-  let voice = voice.map(|value| value.to_owned());
-  let language = language.map(|value| value.to_owned());
+  let synthesizer = synthesizer.map(std::borrow::ToOwned::to_owned);
+  let voice = voice.map(std::borrow::ToOwned::to_owned);
+  let language = language.map(std::borrow::ToOwned::to_owned);
   let text = text.to_owned();
   let closure = move || {
     BACKENDS.with_borrow(|backends| {
@@ -334,7 +331,7 @@ pub fn speak_to_audio_output(
           SINK
             .get()
             .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
-            .append(source)
+            .append(source);
         }
         (_, Some(synthesizer)) => synthesizer.speak(
           voice.as_deref(),
@@ -353,37 +350,34 @@ pub fn speak_to_audio_output(
   Ok(())
 }
 pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), OutputError> {
-  let synthesizer = synthesizer.map(|value| value.to_owned());
+  let synthesizer = synthesizer.map(std::borrow::ToOwned::to_owned);
   let closure = move || {
     BACKENDS.with_borrow(|backends| {
-      match synthesizer {
-        Some(synthesizer_name) => {
-          let synthesizer = backends
-            .get(&synthesizer_name)
-            .ok_or(OutputError::into_backend_not_found(&synthesizer_name))?;
-          match (
-            synthesizer.as_speech_synthesizer_to_audio_data(),
-            synthesizer.as_speech_synthesizer_to_audio_output(),
-          ) {
-            (None, None) => Err(OutputError::into_speech_not_supported(&synthesizer_name))?,
-            (Some(_), None) => SINK
-              .get()
-              .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
-              .stop(),
-            (_, Some(synthesizer)) => synthesizer.stop_speech()?,
-          }
-        }
-        None => {
-          SINK
+      if let Some(synthesizer_name) = synthesizer {
+        let synthesizer = backends
+          .get(&synthesizer_name)
+          .ok_or(OutputError::into_backend_not_found(&synthesizer_name))?;
+        match (
+          synthesizer.as_speech_synthesizer_to_audio_data(),
+          synthesizer.as_speech_synthesizer_to_audio_output(),
+        ) {
+          (None, None) => Err(OutputError::into_speech_not_supported(&synthesizer_name))?,
+          (Some(_), None) => SINK
             .get()
             .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
-            .stop();
-          for synthesizer in backends
-            .iter()
-            .flat_map(|backend| backend.1.as_speech_synthesizer_to_audio_output())
-          {
-            let _result = synthesizer.stop_speech();
-          }
+            .stop(),
+          (_, Some(synthesizer)) => synthesizer.stop_speech()?,
+        }
+      } else {
+        SINK
+          .get()
+          .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
+          .stop();
+        for synthesizer in backends
+          .iter()
+          .filter_map(|backend| backend.1.as_speech_synthesizer_to_audio_output())
+        {
+          let _result = synthesizer.stop_speech();
         }
       };
       Ok(Box::new(()) as OperationOk)
@@ -393,28 +387,27 @@ pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), OutputError> {
   Ok(())
 }
 pub fn braille(backend: Option<&str>, text: &str) -> Result<(), OutputError> {
-  let backend = backend.map(|value| value.to_owned());
+  let backend = backend.map(std::borrow::ToOwned::to_owned);
   let text = text.to_owned();
   let closure = move || {
     BACKENDS.with_borrow(|backends| {
-      match backend {
-        Some(backend_name) => backends
+      if let Some(backend_name) = backend {
+        backends
           .get(&backend_name)
           .ok_or(OutputError::into_backend_not_found(&backend_name))?
           .as_braille_backend()
           .ok_or(OutputError::into_braille_not_supported(&backend_name))?
-          .braille(&text)?,
-        None => {
-          let mut braille_backends = backends
-            .iter()
-            .flat_map(|backend| backend.1.as_braille_backend())
-            .collect::<Vec<&dyn BrailleBackend>>();
-          braille_backends.sort_unstable_by_key(|backend| backend.priority());
-          braille_backends
-            .first()
-            .ok_or(OutputError::NoBrailleBackends)?
-            .braille(&text)?
-        }
+          .braille(&text)?;
+      } else {
+        let mut braille_backends = backends
+          .iter()
+          .filter_map(|backend| backend.1.as_braille_backend())
+          .collect::<Vec<&dyn BrailleBackend>>();
+        braille_backends.sort_unstable_by_key(|backend| backend.priority());
+        braille_backends
+          .first()
+          .ok_or(OutputError::NoBrailleBackends)?
+          .braille(&text)?;
       };
       Ok(Box::new(()) as OperationOk)
     })

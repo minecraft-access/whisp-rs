@@ -1,8 +1,12 @@
 use crate::error::OutputError;
-use crate::*;
+use crate::{
+  braille, initialize, list_braille_backends, list_speech_synthesizers,
+  list_speech_synthesizers_supporting_audio_data, list_voices, output, speak_to_audio_data,
+  speak_to_audio_output, stop_speech, SpeechSynthesizerMetadata,
+};
 use ::jni::errors::Error;
-use ::jni::objects::*;
-use ::jni::sys::*;
+use ::jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
+use ::jni::sys::{jboolean, JNI_FALSE, JNI_TRUE};
 use ::jni::JNIEnv;
 fn error_to_exception_class(error: &OutputError) -> String {
   "org/mcaccess/whisprs/error/".to_owned()
@@ -42,14 +46,15 @@ fn throw_exception_when_needed<T: std::default::Default>(
 ) -> T {
   match result {
     Ok(value) => value,
-    Err(OutputError::Unknown(error)) => match error.downcast_ref::<Error>() {
-      Some(Error::JavaException) => Default::default(),
-      _ => {
+    Err(OutputError::Unknown(error)) => {
+      if let Some(Error::JavaException) = error.downcast_ref::<Error>() {
+        Default::default()
+      } else {
         let error = OutputError::into_unknown(error);
         let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
         Default::default()
       }
-    },
+    }
     Err(error) => {
       let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
       Default::default()
@@ -159,7 +164,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
   _class: JClass<'local>,
 ) {
   let closure = || initialize();
-  throw_exception_when_needed(&mut env, closure())
+  throw_exception_when_needed(&mut env, closure());
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
@@ -193,7 +198,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
       let synthesizer = speech_synthesizer_metadata_to_jni(&mut env, &voice.synthesizer)?;
       let display_name = env.new_string(&voice.display_name)?;
       let name = env.new_string(&voice.name)?;
-      let languages = voice.languages.into_iter().map(|language| env.new_string(language).map_err(OutputError::into_unknown).map(|string| string.into())).collect::<Result<Vec<JObject>, OutputError>>()?;
+      let languages = voice.languages.into_iter().map(|language| env.new_string(language).map_err(OutputError::into_unknown).map(std::convert::Into::into)).collect::<Result<Vec<JObject>, OutputError>>()?;
       let languages = objects_to_jni_array(&mut env, &string_class, &languages)?;
       let priority = voice.priority as i8;
       let voice = env
@@ -387,7 +392,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'loc
     )
   };
   let result = closure();
-  throw_exception_when_needed(&mut env, result)
+  throw_exception_when_needed(&mut env, result);
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_stopSpeech<'local>(
@@ -400,7 +405,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_stopSpeech<'local>(
     stop_speech(synthesizer.as_deref())
   };
   let result = closure();
-  throw_exception_when_needed(&mut env, result)
+  throw_exception_when_needed(&mut env, result);
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
@@ -418,7 +423,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
     braille(backend.as_deref(), &text)
   };
   let result = closure();
-  throw_exception_when_needed(&mut env, result)
+  throw_exception_when_needed(&mut env, result);
 }
 #[no_mangle]
 pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
@@ -460,5 +465,5 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
     )
   };
   let result = closure();
-  throw_exception_when_needed(&mut env, result)
+  throw_exception_when_needed(&mut env, result);
 }

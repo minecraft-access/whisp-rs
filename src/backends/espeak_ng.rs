@@ -1,10 +1,19 @@
 #![allow(non_upper_case_globals)]
-use crate::audio::*;
-use crate::backends::*;
+use crate::audio::{SampleFormat, SpeechResult};
+use crate::backends::{
+  Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
 use crate::metadata::Voice;
 use anyhow::anyhow;
-use espeakng_sys::*;
+use espeakng_sys::{
+  espeakCHARS_AUTO, espeakRATE_MAXIMUM, espeakRATE_MINIMUM, espeak_AUDIO_OUTPUT,
+  espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS, espeak_ERROR, espeak_ERROR_EE_OK, espeak_EVENT,
+  espeak_Initialize, espeak_ListVoices, espeak_PARAMETER_espeakPITCH, espeak_PARAMETER_espeakRATE,
+  espeak_PARAMETER_espeakVOLUME, espeak_POSITION_TYPE, espeak_SetParameter,
+  espeak_SetSynthCallback, espeak_SetVoiceByName, espeak_SetVoiceByProperties, espeak_Synth,
+  espeak_VOICE,
+};
 use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::ffi::{c_void, CStr, CString};
@@ -84,7 +93,7 @@ impl Backend for EspeakNg {
               (true, _, byte) => {
                 priority = byte;
                 last_byte_was_null = false;
-                last_byte_was_priority = true
+                last_byte_was_priority = true;
               }
               (_, true, byte) => {
                 string_start = languages_ptr_copy;
@@ -192,9 +201,9 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
           .map_err(|_| OutputError::into_language_not_found(language))?;
       }
     };
-    let rate = rate.unwrap_or(50) as f64;
-    let rate = (rate / 100.0) * ((espeakRATE_MAXIMUM - espeakRATE_MINIMUM) as f64)
-      + (espeakRATE_MINIMUM as f64);
+    let rate = f64::from(rate.unwrap_or(50));
+    let rate = (rate / 100.0) * f64::from(espeakRATE_MAXIMUM - espeakRATE_MINIMUM)
+      + f64::from(espeakRATE_MINIMUM);
     let rate = (rate.round()) as i32;
     handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakRATE, rate, 0) })
       .map_err(|err| {
@@ -204,7 +213,7 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
           err,
         )
       })?;
-    let volume = volume.unwrap_or(100) as i32;
+    let volume = i32::from(volume.unwrap_or(100));
     handle_espeak_error(unsafe {
       espeak_SetParameter(espeak_PARAMETER_espeakVOLUME, volume * 2, 0)
     })
@@ -215,7 +224,7 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
         err,
       )
     })?;
-    let pitch = pitch.unwrap_or(50) as i32;
+    let pitch = i32::from(pitch.unwrap_or(50));
     handle_espeak_error(unsafe { espeak_SetParameter(espeak_PARAMETER_espeakPITCH, pitch, 0) })
       .map_err(|err| {
         OutputError::into_speak_failed(
@@ -234,7 +243,7 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
     let user_data = std::ptr::null_mut();
     handle_espeak_error(unsafe {
       espeak_Synth(
-        text_cstr.as_ptr() as *const c_void,
+        text_cstr.as_ptr().cast::<c_void>(),
         text_cstr.count_bytes(),
         position,
         position_type,
@@ -268,7 +277,7 @@ unsafe extern "C" fn synth_callback(
   _events: *mut espeak_EVENT,
 ) -> c_int {
   if !wav.is_null() {
-    let wav_slice = std::slice::from_raw_parts_mut(wav as *mut c_char, 2 * sample_count as usize);
+    let wav_slice = std::slice::from_raw_parts_mut(wav.cast::<c_char>(), 2 * sample_count as usize);
     let mut wav_vec = wav_slice
       .iter()
       .map(|byte| *byte as u8)

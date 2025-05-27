@@ -1,7 +1,13 @@
-use crate::backends::*;
+use crate::backends::{
+  Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
 use crate::metadata::Voice;
-use ssip_client_async::*;
+use ssip_client_async::{
+  fifo, Client, ClientName, ClientScope, MessageScope, OK_CANCELED, OK_GET, OK_LANGUAGE_SET,
+  OK_OUTPUT_MODULES_LIST_SENT, OK_OUTPUT_MODULE_SET, OK_PITCH_SET, OK_RATE_SET, OK_VOICE_SET,
+  OK_VOLUME_SET,
+};
 use std::cell::RefCell;
 pub struct SpeechDispatcher {
   default_output_module: String,
@@ -56,7 +62,7 @@ impl Backend for SpeechDispatcher {
           .map(|voice| {
             let name = voice.name;
             let languages = match voice.language {
-              Some(language) => vec![language.to_lowercase().replace("_", "-")],
+              Some(language) => vec![language.to_lowercase().replace('_', "-")],
               None => Vec::new(),
             };
             let display_name = name.clone() + " (" + &module + ")";
@@ -213,7 +219,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     };
     let lines = text
       .lines()
-      .map(|line| line.to_owned())
+      .map(std::borrow::ToOwned::to_owned)
       .collect::<Vec<String>>();
     client
       .speak()
