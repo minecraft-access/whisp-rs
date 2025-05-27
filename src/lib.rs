@@ -377,7 +377,7 @@ pub fn output(
   text: &str,
   interrupt: bool,
 ) -> Result<(), OutputError> {
-  speak_to_audio_output(
+  let speech_result = speak_to_audio_output(
     synthesizer,
     voice,
     language,
@@ -386,6 +386,17 @@ pub fn output(
     pitch,
     text,
     interrupt,
-  )?;
-  braille(braille_backend, text)
+  );
+  let braille_result = braille(braille_backend, text);
+  match (speech_result, braille_result) {
+    (Ok(()), Ok(())) => Ok(()),
+    (Err(OutputError::NoVoices), Err(OutputError::NoBrailleBackends)) => {
+      Err(OutputError::NoBackends)
+    }
+    (result, Err(OutputError::NoBrailleBackends)) => result,
+    (Err(OutputError::NoVoices), result) => result,
+    (result, Ok(())) => result,
+    (Ok(()), result) => result,
+    (result, _) => result,
+  }
 }

@@ -15,6 +15,7 @@ fn error_to_exception_class(error: &OutputError) -> String {
       OutputError::LanguageNotFound(_) => "LanguageNotFoundException",
       OutputError::NoVoices => "NoVoicesException",
       OutputError::NoBrailleBackends => "NoBrailleBackendsException",
+      OutputError::NoBackends => "NoBackendsException",
       OutputError::InvalidRate(_) => "InvalidRateException",
       OutputError::InvalidVolume(_) => "InvalidVolumeException",
       OutputError::InvalidPitch(_) => "InvalidPitchException",

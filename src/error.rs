@@ -17,6 +17,8 @@ pub enum OutputError {
   NoVoices,
   #[error("No Braille backends were found")]
   NoBrailleBackends,
+  #[error("No output backends were found")]
+  NoBackends,
   #[error("Speech rate ({0}) is not between 0 and 100")]
   InvalidRate(u8),
   #[error("Speech volume ({0}) is not between 0 and 100")]
