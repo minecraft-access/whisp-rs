@@ -142,7 +142,7 @@ fn objects_to_jni_array<'local>(
       JObject::null(),
     )
     .map_err(OutputError::into_unknown)?;
-  for (index, object) in objects.into_iter().enumerate() {
+  for (index, object) in objects.iter().enumerate() {
     env
       .set_object_array_element(
         &array,
