@@ -178,7 +178,7 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
                 .set(sample_format)
                 .map_err(|_| OutputError::into_unknown(anyhow!("Failed to set sample format")))?;
               sample_rate2
-                .set(format.sampleRate() as u32)
+                .set(format.sampleRate()as u32)
                 .map_err(|_| OutputError::into_unknown(anyhow!("Failed to set sample rate")))?;
             };
             Ok(())

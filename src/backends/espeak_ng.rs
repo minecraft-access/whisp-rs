@@ -280,7 +280,8 @@ unsafe extern "C" fn synth_callback(
   _events: *mut espeak_EVENT,
 ) -> c_int {
   if !wav.is_null() {
-    let wav_slice = std::slice::from_raw_parts_mut(wav.cast::<c_char>(), 2 * sample_count as usize);
+    let sample_count: usize = sample_count.try_into().unwrap();
+    let wav_slice = std::slice::from_raw_parts_mut(wav.cast::<c_char>(), 2*sample_count);
     let mut wav_vec = wav_slice
       .iter()
       .map(|byte| *byte as u8)
