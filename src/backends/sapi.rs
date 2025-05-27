@@ -1,5 +1,7 @@
-use crate::audio::*;
-use crate::backends::*;
+use crate::audio::{SampleFormat, SpeechResult};
+use crate::backends::{
+  Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
 use crate::metadata::Voice;
 use anyhow::anyhow;
@@ -8,11 +10,15 @@ use quick_xml::writer::Writer;
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::io::Cursor;
-use windows::core::*;
+use windows::core::{w, GUID, PWSTR};
 use windows::Win32::Globalization::LCIDToLocaleName;
-use windows::Win32::Media::Audio::*;
-use windows::Win32::Media::Speech::*;
-use windows::Win32::System::Com::*;
+use windows::Win32::Media::Audio::{WAVEFORMATEX, WAVE_FORMAT_PCM};
+use windows::Win32::Media::Speech::{
+  ISpObjectToken, ISpObjectTokenCategory, ISpStream, ISpVoice, SpObjectToken,
+  SpObjectTokenCategory, SpStream, SpVoice, SPCAT_VOICES, SPF_ASYNC, SPF_IS_XML, SPF_PARSE_SAPI,
+  SPF_PURGEBEFORESPEAK,
+};
+use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, STREAM_SEEK_SET};
 use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
 use windows::Win32::UI::Shell::SHCreateMemStream;
 fn set_parameters(
@@ -108,7 +114,7 @@ fn set_parameters(
     synthesizer.SetVoice(&voice_token).map_err(|_| {
       OutputError::into_voice_not_found(voice.unwrap_or(language.unwrap_or(default_voice)))
     })?;
-    let rate = rate.unwrap_or(50) as i32;
+    let rate = i32::from(rate.unwrap_or(50));
     let rate = (rate / 5) - 10;
     synthesizer.SetRate(rate).map_err(|err| {
       OutputError::into_speak_failed(
@@ -117,7 +123,7 @@ fn set_parameters(
         err,
       )
     })?;
-    let volume = volume.unwrap_or(100) as u16;
+    let volume = u16::from(volume.unwrap_or(100));
     synthesizer.SetVolume(volume).map_err(|err| {
       OutputError::into_speak_failed(
         synthesizer_name,
@@ -314,7 +320,7 @@ impl SpeechSynthesizerToAudioData for Sapi {
         .map_err(OutputError::into_unknown)?;
       loop {
         let result = formatted_stream.Read(
-          buffer.as_mut_ptr() as *mut c_void,
+          buffer.as_mut_ptr().cast::<c_void>(),
           65536,
           Some(&mut bytes_read),
         );
@@ -326,7 +332,7 @@ impl SpeechSynthesizerToAudioData for Sapi {
         match result.ok() {
           Ok(()) => {}
           Err(_) => break,
-        };
+        }
         buffer.clear();
       }
       Ok(SpeechResult {
@@ -367,9 +373,10 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
         .encode_utf16()
         .chain(Some(0))
         .collect::<Vec<u16>>();
-      let flags = match interrupt {
-        true => SPF_PURGEBEFORESPEAK.0 | SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0,
-        false => SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0,
+      let flags = if interrupt {
+        SPF_PURGEBEFORESPEAK.0 | SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0
+      } else {
+        SPF_ASYNC.0 | SPF_IS_XML.0 | SPF_PARSE_SAPI.0
       };
       self
         .playback_synthesizer

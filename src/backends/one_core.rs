@@ -1,12 +1,14 @@
-use crate::audio::*;
-use crate::backends::*;
+use crate::audio::{SampleFormat, SpeechResult};
+use crate::backends::{
+  Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
 use crate::metadata::Voice;
-use rodio::*;
+use rodio::{Decoder, Source};
 use std::io::Cursor;
-use windows::core::*;
+use windows::core::{Interface, HSTRING};
 use windows::Media::SpeechSynthesis::SpeechSynthesizer;
-use windows::Storage::Streams::*;
+use windows::Storage::Streams::{Buffer, InputStreamOptions};
 use windows::Win32::System::WinRT::IMemoryBufferByteAccess;
 pub struct OneCore {
   synthesizer: SpeechSynthesizer,
@@ -90,7 +92,7 @@ impl SpeechSynthesizerToAudioData for OneCore {
         err,
       )
     })?;
-    let rate = rate.unwrap_or(50) as f64;
+    let rate = f64::from(rate.unwrap_or(50));
     let rate = (rate / 100.0 * 5.5) + 0.5;
     options.SetSpeakingRate(rate).map_err(|err| {
       OutputError::into_speak_failed(
@@ -99,7 +101,7 @@ impl SpeechSynthesizerToAudioData for OneCore {
         err,
       )
     })?;
-    let pitch = pitch.unwrap_or(50) as f64;
+    let pitch = f64::from(pitch.unwrap_or(50));
     let pitch = pitch / 50.0;
     options.SetAudioPitch(pitch).map_err(|err| {
       OutputError::into_speak_failed(
@@ -108,7 +110,7 @@ impl SpeechSynthesizerToAudioData for OneCore {
         err,
       )
     })?;
-    let volume = volume.unwrap_or(100) as f64;
+    let volume = f64::from(volume.unwrap_or(100));
     let volume = volume / 100.0;
     options.SetAudioVolume(volume).map_err(|err| {
       OutputError::into_speak_failed(
@@ -156,15 +158,13 @@ impl SpeechSynthesizerToAudioData for OneCore {
     unsafe {
       memory_buffer_accessor
         .GetBuffer(&mut data_ptr, &mut capacity)
-        .map_err(OutputError::into_unknown)?
+        .map_err(OutputError::into_unknown)?;
     };
     let data = unsafe { std::slice::from_raw_parts_mut(data_ptr, capacity as _) };
     let data_stream = Cursor::new(data);
     let decoder = Decoder::new(data_stream).map_err(OutputError::into_unknown)?;
     let sample_rate = decoder.sample_rate();
-    let pcm = decoder
-      .flat_map(|sample| sample.to_le_bytes())
-      .collect::<Vec<u8>>();
+    let pcm = decoder.flat_map(i16::to_le_bytes).collect::<Vec<u8>>();
     Ok(SpeechResult {
       pcm,
       sample_format: SampleFormat::S16,

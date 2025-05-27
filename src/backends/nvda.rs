@@ -3,10 +3,12 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 include!(concat!(env!("OUT_DIR"), "/nvda_bindings.rs"));
-use crate::backends::*;
+use crate::backends::{
+  Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
 use crate::metadata::Voice;
-use windows::core::*;
+use windows::core::{Result, HSTRING};
 use windows::Win32::Foundation::WIN32_ERROR;
 fn to_result(error: u32) -> Result<()> {
   WIN32_ERROR(error).ok()
@@ -60,7 +62,7 @@ impl SpeechSynthesizerToAudioOutput for Nvda {
       if interrupt {
         to_result(nvdaController_cancelSpeech())
           .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
-      };
+      }
       let text = HSTRING::from(text);
       to_result(nvdaController_speakText(text.as_ptr()))
         .map_err(|err| OutputError::into_speak_failed(&self.name(), "nvda", err))?;

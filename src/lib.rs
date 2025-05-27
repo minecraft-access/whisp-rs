@@ -108,15 +108,15 @@ fn internal_list_voices(
   BACKENDS.with_borrow(|backends| {
     let mut voices = backends
       .values()
-      .filter(|backend| synthesizer.map_or(true, |synthesizer| backend.name() == synthesizer))
+      .filter(|backend| synthesizer.is_none_or(|synthesizer| backend.name() == synthesizer))
       .filter(|synthesizer| {
         !needs_audio_data || synthesizer.as_speech_synthesizer_to_audio_data().is_some()
       })
       .flat_map(|backend| backend.list_voices())
       .flatten()
       .filter(|voice| {
-        name.map_or(true, |name| voice.name == name)
-          && language.map_or(true, |name| {
+        name.is_none_or(|name| voice.name == name)
+          && language.is_none_or(|name| {
             voice.languages.is_empty() || voice.languages.iter().any(|language| language == name)
           })
       })
@@ -225,13 +225,13 @@ fn check_speech_parameters(
 ) -> Result<(), OutputError> {
   if rate.is_some_and(|rate| rate > 100) {
     Err(OutputError::InvalidRate(rate.unwrap()))?;
-  };
+  }
   if volume.is_some_and(|volume| volume > 100) {
     Err(OutputError::InvalidVolume(volume.unwrap()))?;
-  };
+  }
   if pitch.is_some_and(|pitch| pitch > 100) {
     Err(OutputError::InvalidPitch(pitch.unwrap()))?;
-  };
+  }
   Ok(())
 }
 pub fn speak_to_audio_data(
@@ -331,7 +331,7 @@ pub fn speak_to_audio_output(
               .get()
               .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
               .stop();
-          };
+          }
           SINK
             .get()
             .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
@@ -346,7 +346,7 @@ pub fn speak_to_audio_output(
           &text,
           interrupt,
         )?,
-      };
+      }
       Ok(Box::new(()) as OperationOk)
     })
   };
@@ -383,7 +383,7 @@ pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), OutputError> {
         {
           let _result = synthesizer.stop_speech();
         }
-      };
+      }
       Ok(Box::new(()) as OperationOk)
     })
   };
@@ -412,7 +412,7 @@ pub fn braille(backend: Option<&str>, text: &str) -> Result<(), OutputError> {
           .first()
           .ok_or(OutputError::NoBrailleBackends)?
           .braille(&text)?;
-      };
+      }
       Ok(Box::new(()) as OperationOk)
     })
   };

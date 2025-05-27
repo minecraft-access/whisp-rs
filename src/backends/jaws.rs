@@ -1,11 +1,15 @@
 #![allow(non_snake_case)]
-use crate::backends::*;
+use crate::backends::{
+  Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
+};
 use crate::error::OutputError;
 use crate::metadata::Voice;
 use anyhow::anyhow;
-use windows::core::*;
-use windows::Win32::Foundation::*;
-use windows::Win32::System::Com::*;
+use windows::core::{interface, w, BSTR, GUID, HRESULT};
+use windows::Win32::Foundation::VARIANT_BOOL;
+use windows::Win32::System::Com::{
+  CoCreateInstance, IDispatch, IDispatch_Impl, IDispatch_Vtbl, CLSCTX_ALL,
+};
 use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
 #[interface("123DEDB4-2CF6-429C-A2AB-CC809E5516CE")]
 unsafe trait IJawsApi: IDispatch {
@@ -76,7 +80,7 @@ impl SpeechSynthesizerToAudioOutput for Jaws {
         .jaws_api
         .SayString(text.into(), interrupt.into(), &mut result)
         .ok()
-        .map_err(|err| OutputError::into_speak_failed(&self.name(), "jaws", err))?
+        .map_err(|err| OutputError::into_speak_failed(&self.name(), "jaws", err))?;
     };
     if result.into() {
       Ok(())
@@ -94,7 +98,7 @@ impl SpeechSynthesizerToAudioOutput for Jaws {
         .jaws_api
         .StopSpeech()
         .ok()
-        .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
+        .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
     };
     Ok(())
   }
@@ -104,14 +108,14 @@ impl BrailleBackend for Jaws {
     0
   }
   fn braille(&self, text: &str) -> std::result::Result<(), OutputError> {
-    let function = "BrailleString(\"".to_owned() + &text.replace("\"", "'") + "\")";
+    let function = "BrailleString(\"".to_owned() + &text.replace('"', "'") + "\")";
     let mut result: VARIANT_BOOL = Default::default();
     unsafe {
       self
         .jaws_api
         .RunFunction(function.into(), &mut result)
         .ok()
-        .map_err(|err| OutputError::into_braille_failed(&self.name(), err))?
+        .map_err(|err| OutputError::into_braille_failed(&self.name(), err))?;
     };
     if result.into() {
       Ok(())

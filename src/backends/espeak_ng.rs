@@ -104,7 +104,7 @@ impl Backend for EspeakNg {
                     priority.try_into()?,
                     CStr::from_ptr(string_start).to_str()?.to_owned(),
                   ));
-                };
+                }
               }
               (_, _, 0) => {
                 last_byte_was_null = true;
@@ -114,7 +114,7 @@ impl Backend for EspeakNg {
                 ));
               }
               (_, _, _) => {}
-            };
+            }
             languages_ptr_copy = languages_ptr_copy.add(1);
           }
           let language = languages.into_iter().min_by_key(|tuple| tuple.0);
@@ -201,7 +201,7 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
         handle_espeak_error(unsafe { espeak_SetVoiceByProperties(&mut voice_spec) })
           .map_err(|_| OutputError::into_language_not_found(language))?;
       }
-    };
+    }
     let rate = f64::from(rate.unwrap_or(50));
     let rate = (rate / 100.0) * f64::from(espeakRATE_MAXIMUM - espeakRATE_MINIMUM)
       + f64::from(espeakRATE_MINIMUM);
@@ -281,7 +281,7 @@ unsafe extern "C" fn synth_callback(
 ) -> c_int {
   if !wav.is_null() {
     let sample_count: usize = sample_count.try_into().unwrap();
-    let wav_slice = std::slice::from_raw_parts_mut(wav.cast::<c_char>(), 2*sample_count);
+    let wav_slice = std::slice::from_raw_parts_mut(wav.cast::<c_char>(), 2 * sample_count);
     let mut wav_vec = wav_slice
       .iter()
       .map(|byte| *byte as u8)
