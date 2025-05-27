@@ -14,15 +14,12 @@ use espeakng_sys::{
   espeak_SetSynthCallback, espeak_SetVoiceByName, espeak_SetVoiceByProperties, espeak_Synth,
   espeak_VOICE,
 };
-use lazy_static::lazy_static;
 use std::cell::Cell;
 use std::ffi::{c_void, CStr, CString};
 use std::iter::once;
 use std::os::raw::{c_char, c_int, c_short};
 use std::sync::Mutex;
-lazy_static! {
-  static ref BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::new()));
-}
+static BUFFER: Mutex<Cell<Vec<u8>>> = Mutex::new(Cell::new(Vec::new()));
 fn handle_espeak_error(error: espeak_ERROR) -> Result<(), anyhow::Error> {
   match error {
     espeak_ERROR_EE_OK => Ok(()),

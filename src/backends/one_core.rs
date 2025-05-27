@@ -55,6 +55,7 @@ impl SpeechSynthesizerToAudioData for OneCore {
   fn supports_speech_parameters(&self) -> bool {
     true
   }
+  #[allow(clippy::too_many_lines)]
   fn speak(
     &self,
     voice_name: Option<&str>,
@@ -139,9 +140,14 @@ impl SpeechSynthesizerToAudioData for OneCore {
     })?;
     stream.Seek(0).map_err(OutputError::into_unknown)?;
     let size = stream.Size().map_err(OutputError::into_unknown)?;
-    let buffer = Buffer::Create(size as _).map_err(OutputError::into_unknown)?;
+    let buffer = Buffer::Create(size.try_into().map_err(OutputError::into_unknown)?)
+      .map_err(OutputError::into_unknown)?;
     stream
-      .ReadAsync(&buffer, size as _, InputStreamOptions::None)
+      .ReadAsync(
+        &buffer,
+        size.try_into().map_err(OutputError::into_unknown)?,
+        InputStreamOptions::None,
+      )
       .map_err(OutputError::into_unknown)?
       .get()
       .map_err(OutputError::into_unknown)?;
@@ -160,7 +166,12 @@ impl SpeechSynthesizerToAudioData for OneCore {
         .GetBuffer(&mut data_ptr, &mut capacity)
         .map_err(OutputError::into_unknown)?;
     };
-    let data = unsafe { std::slice::from_raw_parts_mut(data_ptr, capacity as _) };
+    let data = unsafe {
+      std::slice::from_raw_parts_mut(
+        data_ptr,
+        capacity.try_into().map_err(OutputError::into_unknown)?,
+      )
+    };
     let data_stream = Cursor::new(data);
     let decoder = Decoder::new(data_stream).map_err(OutputError::into_unknown)?;
     let sample_rate = decoder.sample_rate();

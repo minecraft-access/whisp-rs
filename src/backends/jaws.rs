@@ -1,3 +1,4 @@
+#![allow(clippy::transmute_ptr_to_ptr)]
 #![allow(non_snake_case)]
 use crate::backends::{
   Backend, BrailleBackend, SpeechSynthesizerToAudioData, SpeechSynthesizerToAudioOutput,
@@ -74,7 +75,7 @@ impl SpeechSynthesizerToAudioOutput for Jaws {
     text: &str,
     interrupt: bool,
   ) -> std::result::Result<(), OutputError> {
-    let mut result: VARIANT_BOOL = Default::default();
+    let mut result = VARIANT_BOOL::default();
     unsafe {
       self
         .jaws_api
@@ -109,7 +110,7 @@ impl BrailleBackend for Jaws {
   }
   fn braille(&self, text: &str) -> std::result::Result<(), OutputError> {
     let function = "BrailleString(\"".to_owned() + &text.replace('"', "'") + "\")";
-    let mut result: VARIANT_BOOL = Default::default();
+    let mut result = VARIANT_BOOL::default();
     unsafe {
       self
         .jaws_api

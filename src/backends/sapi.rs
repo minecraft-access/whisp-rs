@@ -21,6 +21,7 @@ use windows::Win32::Media::Speech::{
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, STREAM_SEEK_SET};
 use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
 use windows::Win32::UI::Shell::SHCreateMemStream;
+#[allow(clippy::too_many_lines)]
 fn set_parameters(
   synthesizer: &ISpVoice,
   synthesizer_name: &str,
@@ -64,12 +65,16 @@ fn set_parameters(
         enumerator
           .GetCount(&mut count)
           .map_err(|err| OutputError::into_speak_failed(synthesizer_name, language, err))?;
-        let mut tokens = Vec::with_capacity(count as _);
+        let mut tokens = Vec::with_capacity(count.try_into().map_err(OutputError::into_unknown)?);
         let mut tokens_fetched: u32 = 0;
         enumerator
           .Next(count, tokens.as_mut_ptr(), Some(&mut tokens_fetched))
           .map_err(|err| OutputError::into_speak_failed(synthesizer_name, language, err))?;
-        tokens.set_len(tokens_fetched as _);
+        tokens.set_len(
+          tokens_fetched
+            .try_into()
+            .map_err(OutputError::into_unknown)?,
+        );
         tokens
           .into_iter()
           .flatten()
@@ -83,9 +88,15 @@ fn set_parameters(
                   .split(';')
                   .flat_map(|lcid| {
                     let lcid = u32::from_str_radix(lcid, 16)?;
-                    let mut name_vector = vec![0; LOCALE_NAME_MAX_LENGTH as _];
+                    let mut name_vector = vec![
+                      0;
+                      LOCALE_NAME_MAX_LENGTH
+                        .try_into()
+                        .map_err(OutputError::into_unknown)?
+                    ];
                     let length = LCIDToLocaleName(lcid, Some(&mut name_vector), 0);
-                    name_vector.set_len((length - 1) as _);
+                    name_vector
+                      .set_len((length - 1).try_into().map_err(OutputError::into_unknown)?);
                     Ok::<String, anyhow::Error>(String::from_utf16(&name_vector)?.to_lowercase())
                   })
                   .collect::<Vec<String>>(),
@@ -131,7 +142,10 @@ fn set_parameters(
         err,
       )
     })?;
-    let pitch = pitch.unwrap_or(50) as i8;
+    let pitch: i8 = pitch
+      .unwrap_or(50)
+      .try_into()
+      .map_err(OutputError::into_unknown)?;
     let pitch = (pitch / 5) - 10;
     let pitch = pitch.to_string();
     let mut writer = Writer::new(Cursor::new(Vec::new()));
@@ -188,12 +202,16 @@ impl Backend for Sapi {
       enumerator
         .GetCount(&mut count)
         .map_err(OutputError::into_unknown)?;
-      let mut tokens = Vec::with_capacity(count as _);
+      let mut tokens = Vec::with_capacity(count.try_into().map_err(OutputError::into_unknown)?);
       let mut tokens_fetched: u32 = 0;
       enumerator
         .Next(count, tokens.as_mut_ptr(), Some(&mut tokens_fetched))
         .map_err(OutputError::into_unknown)?;
-      tokens.set_len(tokens_fetched as _);
+      tokens.set_len(
+        tokens_fetched
+          .try_into()
+          .map_err(OutputError::into_unknown)?,
+      );
       let voices = tokens
         .into_iter()
         .flatten()
@@ -213,9 +231,14 @@ impl Backend for Sapi {
               .split(';')
               .flat_map(|lcid| {
                 let lcid = u32::from_str_radix(lcid, 16)?;
-                let mut name_vector = vec![0; LOCALE_NAME_MAX_LENGTH as _];
+                let mut name_vector = vec![
+                  0;
+                  LOCALE_NAME_MAX_LENGTH
+                    .try_into()
+                    .map_err(OutputError::into_unknown)?
+                ];
                 let length = LCIDToLocaleName(lcid, Some(&mut name_vector), 0);
-                name_vector.set_len((length - 1) as _);
+                name_vector.set_len((length - 1).try_into().map_err(OutputError::into_unknown)?);
                 Ok::<String, anyhow::Error>(String::from_utf16(&name_vector)?.to_lowercase())
               })
               .filter(|language| seen.insert(language.clone()))
@@ -248,6 +271,7 @@ impl SpeechSynthesizerToAudioData for Sapi {
   fn supports_speech_parameters(&self) -> bool {
     true
   }
+  #[allow(clippy::cast_sign_loss)]
   fn speak(
     &self,
     voice: Option<&str>,
@@ -265,7 +289,9 @@ impl SpeechSynthesizerToAudioData for Sapi {
         CoCreateInstance(&SpStream, None, CLSCTX_ALL).map_err(OutputError::into_unknown)?;
       let format_guid = GUID::from_u128(0xc31adbae_527f_4ff5_a230_f62bb61ff70c);
       let format = WAVEFORMATEX {
-        wFormatTag: WAVE_FORMAT_PCM as _,
+        wFormatTag: WAVE_FORMAT_PCM
+          .try_into()
+          .map_err(OutputError::into_unknown)?,
         nChannels: 1,
         nSamplesPerSec: 44100,
         nAvgBytesPerSec: 88200,
@@ -327,7 +353,7 @@ impl SpeechSynthesizerToAudioData for Sapi {
         if bytes_read == 0 {
           break;
         }
-        buffer.set_len(bytes_read as _);
+        buffer.set_len(bytes_read.try_into().map_err(OutputError::into_unknown)?);
         pcm.append(&mut buffer);
         match result.ok() {
           Ok(()) => {}
@@ -347,6 +373,7 @@ impl SpeechSynthesizerToAudioOutput for Sapi {
   fn supports_speech_parameters(&self) -> bool {
     true
   }
+  #[allow(clippy::cast_sign_loss)]
   fn speak(
     &self,
     voice: Option<&str>,
