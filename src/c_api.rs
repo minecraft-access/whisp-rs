@@ -1,6 +1,7 @@
 use crate::audio::{SampleFormat, SpeechResult};
 use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
-use std::ffi::{c_char, c_uchar, c_uint, CString};
+use crate::{initialize, list_voices};
+use std::ffi::{c_char, c_uchar, c_uint, CStr, CString};
 pub type WhisprsSampleFormat = SampleFormat;
 #[repr(C)]
 pub struct WhisprsSpeechResult {
@@ -113,4 +114,46 @@ impl Drop for WhisprsVoice {
         .collect();
     }
   }
+}
+unsafe fn optional_c_string_to_rust(string: &*const c_char) -> Option<&str> {
+  if string.is_null() {
+    None
+  } else {
+    Some(CStr::from_ptr(*string).to_str().unwrap())
+  }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_initialize() {
+  initialize().unwrap();
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_list_voices(
+  synthesizer: *const c_char,
+  name: *const c_char,
+  language: *const c_char,
+  needs_audio_data: bool,
+  voices_ptr: *mut *mut *mut WhisprsVoice,
+  voices_len: *mut usize,
+) {
+  let synthesizer = optional_c_string_to_rust(&synthesizer);
+  let name = optional_c_string_to_rust(&name);
+  let language = optional_c_string_to_rust(&language);
+  let voices: Vec<*mut WhisprsVoice> = list_voices(synthesizer, name, language, needs_audio_data)
+    .unwrap()
+    .into_iter()
+    .map(|voice| Box::into_raw(Box::new(voice.into())))
+    .collect();
+  *voices_len = voices.len();
+  let mut voices = voices.into_boxed_slice();
+  *voices_ptr = voices.as_mut_ptr();
+  std::mem::forget(voices);
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_free_voice_list(
+  voices: *mut *mut WhisprsVoice,
+  voices_len: usize,
+) {
+  let voices = std::slice::from_raw_parts_mut(voices, voices_len);
+  let voices = Box::from_raw(std::ptr::from_mut::<[*mut WhisprsVoice]>(voices));
+  let _voices: Vec<Box<WhisprsVoice>> = voices.iter().map(|ptr| Box::from_raw(*ptr)).collect();
 }
