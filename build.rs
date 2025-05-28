@@ -53,7 +53,8 @@ fn main() {
   }
   let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
   cbindgen::Builder::new()
-    .with_crate(crate_dir)
+    .with_crate(&crate_dir)
+    .with_config(cbindgen::Config::from_root_or_default(&crate_dir))
     .generate()
     .unwrap()
     .write_to_file("whisprs.h");
