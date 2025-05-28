@@ -2,6 +2,7 @@
 #![deny(clippy::pedantic)]
 pub mod audio;
 mod backends;
+mod c_api;
 pub mod error;
 mod jni;
 pub mod metadata;
