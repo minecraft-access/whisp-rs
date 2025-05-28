@@ -6,12 +6,11 @@ use crate::{
   speak_to_audio_output, stop_speech,
 };
 use std::ffi::{c_char, c_uchar, c_uint, CStr, CString};
-pub type WhisprsSampleFormat = SampleFormat;
 #[repr(C)]
 pub struct WhisprsSpeechResult {
-  pub pcm: *mut u8,
+  pub pcm: *mut c_uchar,
   pub pcm_len: usize,
-  pub sample_format: WhisprsSampleFormat,
+  pub sample_format: SampleFormat,
   pub sample_rate: c_uint,
 }
 impl From<SpeechResult> for WhisprsSpeechResult {
