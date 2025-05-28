@@ -1,11 +1,12 @@
 use crate::audio::{SampleFormat, SpeechResult};
 use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 use std::ffi::{c_char, c_uchar, c_uint, CString};
+pub type WhisprsSampleFormat = SampleFormat;
 #[repr(C)]
 pub struct WhisprsSpeechResult {
   pub pcm: *mut u8,
   pub pcm_len: usize,
-  pub sample_format: SampleFormat,
+  pub sample_format: WhisprsSampleFormat,
   pub sample_rate: c_uint,
 }
 impl From<SpeechResult> for WhisprsSpeechResult {
