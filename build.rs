@@ -51,4 +51,10 @@ fn main() {
       .write_to_file(Path::new(&output_dir).join("nvda_bindings.rs"))
       .unwrap();
   }
+  let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+  cbindgen::Builder::new()
+    .with_crate(crate_dir)
+    .generate()
+    .unwrap()
+    .write_to_file("whisprs.h");
 }
