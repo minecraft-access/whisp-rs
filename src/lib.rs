@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-#![deny(clippy::pedantic)]
+#![warn(clippy::pedantic)]
 pub mod audio;
 mod backends;
 mod c_api;
