@@ -122,7 +122,7 @@ fn internal_list_voices(
           })
       })
       .collect::<Vec<Voice>>();
-    voices.sort_unstable_by_key(|voice| voice.priority);
+    voices.sort_unstable_by_key(|voice| (voice.priority, voice.name.clone()));
     Ok(voices)
   })
 }
