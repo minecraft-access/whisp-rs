@@ -1,6 +1,9 @@
 use crate::audio::{SampleFormat, SpeechResult};
 use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
-use crate::{initialize, list_voices};
+use crate::{
+  initialize, list_braille_backends, list_speech_synthesizers,
+  list_speech_synthesizers_supporting_audio_data, list_voices,
+};
 use std::ffi::{c_char, c_uchar, c_uint, CStr, CString};
 pub type WhisprsSampleFormat = SampleFormat;
 #[repr(C)]
@@ -156,4 +159,73 @@ pub unsafe extern "C" fn whisprs_free_voice_list(
   let voices = std::slice::from_raw_parts_mut(voices, voices_len);
   let voices = Box::from_raw(std::ptr::from_mut::<[*mut WhisprsVoice]>(voices));
   let _voices: Vec<Box<WhisprsVoice>> = voices.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_list_speech_synthesizers(
+  synthesizers_ptr: *mut *mut *mut WhisprsSpeechSynthesizerMetadata,
+  synthesizers_len: *mut usize,
+) {
+  let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> = list_speech_synthesizers()
+    .unwrap()
+    .into_iter()
+    .map(|synthesizer| Box::into_raw(Box::new(synthesizer.into())))
+    .collect();
+  *synthesizers_len = synthesizers.len();
+  let mut synthesizers = synthesizers.into_boxed_slice();
+  *synthesizers_ptr = synthesizers.as_mut_ptr();
+  std::mem::forget(synthesizers);
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_list_speech_synthesizers_supporting_audio_data(
+  synthesizers_ptr: *mut *mut *mut WhisprsSpeechSynthesizerMetadata,
+  synthesizers_len: *mut usize,
+) {
+  let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> =
+    list_speech_synthesizers_supporting_audio_data()
+      .unwrap()
+      .into_iter()
+      .map(|synthesizer| Box::into_raw(Box::new(synthesizer.into())))
+      .collect();
+  *synthesizers_len = synthesizers.len();
+  let mut synthesizers = synthesizers.into_boxed_slice();
+  *synthesizers_ptr = synthesizers.as_mut_ptr();
+  std::mem::forget(synthesizers);
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_free_speech_synthesizer_list(
+  synthesizers: *mut *mut WhisprsSpeechSynthesizerMetadata,
+  synthesizers_len: usize,
+) {
+  let synthesizers = std::slice::from_raw_parts_mut(synthesizers, synthesizers_len);
+  let synthesizers =
+    Box::from_raw(std::ptr::from_mut::<[*mut WhisprsSpeechSynthesizerMetadata]>(synthesizers));
+  let _synthesizers: Vec<Box<WhisprsSpeechSynthesizerMetadata>> =
+    synthesizers.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_list_braille_backends(
+  backends_ptr: *mut *mut *mut WhisprsBrailleBackendMetadata,
+  backends_len: *mut usize,
+) {
+  let backends: Vec<*mut WhisprsBrailleBackendMetadata> = list_braille_backends()
+    .unwrap()
+    .into_iter()
+    .map(|backend| Box::into_raw(Box::new(backend.into())))
+    .collect();
+  *backends_len = backends.len();
+  let mut backends = backends.into_boxed_slice();
+  *backends_ptr = backends.as_mut_ptr();
+  std::mem::forget(backends);
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn whisprs_free_braille_backend_list(
+  backends: *mut *mut WhisprsBrailleBackendMetadata,
+  backends_len: usize,
+) {
+  let backends = std::slice::from_raw_parts_mut(backends, backends_len);
+  let backends = Box::from_raw(std::ptr::from_mut::<[*mut WhisprsBrailleBackendMetadata]>(
+    backends,
+  ));
+  let _backends: Vec<Box<WhisprsBrailleBackendMetadata>> =
+    backends.iter().map(|ptr| Box::from_raw(*ptr)).collect();
 }
