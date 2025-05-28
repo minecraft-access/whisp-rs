@@ -8,6 +8,7 @@ use ::jni::errors::Error;
 use ::jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use ::jni::sys::{jboolean, JNI_FALSE, JNI_TRUE};
 use ::jni::JNIEnv;
+use anyhow::anyhow;
 fn error_to_exception_class(error: &OutputError) -> String {
   "org/mcaccess/whisprs/error/".to_owned()
     + match error {
@@ -37,6 +38,7 @@ fn error_to_exception_class(error: &OutputError) -> String {
         error: _,
       } => "BrailleFailedException",
       OutputError::InitializeFailed(_) => "InitializeFailedException",
+      OutputError::InvalidParameter(_) => "InvalidParameterException",
       OutputError::Unknown(_) => "UnknownException",
     }
 }
@@ -80,6 +82,24 @@ fn jni_optional_string_to_rust(
     )
   };
   Ok(string)
+}
+fn jni_string_to_rust(env: &mut JNIEnv, string: &JString) -> Result<String, OutputError> {
+  let null = JObject::null();
+  if env
+    .is_same_object(string, &null)
+    .map_err(OutputError::into_unknown)?
+  {
+    Err(OutputError::into_invalid_parameter(anyhow!(
+      "Non-optional string parameter is null"
+    )))
+  } else {
+    Ok(
+      env
+        .get_string(string)
+        .map_err(OutputError::into_unknown)?
+        .into(),
+    )
+  }
 }
 #[allow(clippy::cast_sign_loss)]
 fn jni_optional_byte_to_rust(env: &mut JNIEnv, byte: &JObject) -> Result<Option<u8>, OutputError> {
@@ -318,10 +338,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local
     let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
     let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
     let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
-    let text: String = env
-      .get_string(&text)
-      .map_err(OutputError::into_unknown)?
-      .into();
+    let text = jni_string_to_rust(&mut env, &text)?;
     let result = speak_to_audio_data(
       synthesizer.as_deref(),
       voice.as_deref(),
@@ -378,10 +395,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'loc
     let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
     let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
     let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
-    let text: String = env
-      .get_string(&text)
-      .map_err(OutputError::into_unknown)?
-      .into();
+    let text = jni_string_to_rust(&mut env, &text)?;
     let interrupt: bool = interrupt != JNI_FALSE;
     speak_to_audio_output(
       synthesizer.as_deref(),
@@ -419,10 +433,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
 ) {
   let mut closure = || {
     let backend = jni_optional_string_to_rust(&mut env, &backend)?;
-    let text: String = env
-      .get_string(&text)
-      .map_err(OutputError::into_unknown)?
-      .into();
+    let text = jni_string_to_rust(&mut env, &text)?;
     braille(backend.as_deref(), &text)
   };
   let result = closure();
@@ -450,10 +461,7 @@ pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
     let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
     let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
     let braille_backend = jni_optional_string_to_rust(&mut env, &braille_backend)?;
-    let text: String = env
-      .get_string(&text)
-      .map_err(OutputError::into_unknown)?
-      .into();
+    let text = jni_string_to_rust(&mut env, &text)?;
     let interrupt: bool = interrupt != JNI_FALSE;
     output(
       synthesizer.as_deref(),

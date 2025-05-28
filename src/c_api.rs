@@ -6,8 +6,9 @@ use crate::{
   list_speech_synthesizers_supporting_audio_data, list_voices, output, speak_to_audio_data,
   speak_to_audio_output, stop_speech,
 };
+use anyhow::anyhow;
 use std::cell::Cell;
-use std::ffi::{c_char, c_uchar, c_uint, CStr, CString};
+use std::ffi::{c_char, c_uchar, c_uint, c_void, CStr, CString};
 use std::sync::Mutex;
 #[repr(u8)]
 pub enum WhisprsOutputError {
@@ -28,6 +29,7 @@ pub enum WhisprsOutputError {
   StopSpeechFailed,
   BrailleFailed,
   InitializeFailed,
+  InvalidParameter,
   Unknown,
 }
 impl From<OutputError> for WhisprsOutputError {
@@ -59,6 +61,7 @@ impl From<OutputError> for WhisprsOutputError {
         error: _,
       } => WhisprsOutputError::BrailleFailed,
       OutputError::InitializeFailed(_) => WhisprsOutputError::InitializeFailed,
+      OutputError::InvalidParameter(_) => WhisprsOutputError::InvalidParameter,
       OutputError::Unknown(_) => WhisprsOutputError::Unknown,
     }
   }
@@ -206,11 +209,29 @@ unsafe fn optional_c_string_to_rust(string: &*const c_char) -> Option<&str> {
     Some(CStr::from_ptr(*string).to_str().unwrap())
   }
 }
-unsafe fn optional_c_byte_to_rust(byte: *const c_uchar) -> Option<u8> {
+unsafe fn c_string_to_rust(string: &*const c_char) -> Result<&str, OutputError> {
+  if string.is_null() {
+    Err(OutputError::into_invalid_parameter(anyhow!(
+      "Non-optional string parameter is null"
+    )))
+  } else {
+    Ok(CStr::from_ptr(*string).to_str().unwrap())
+  }
+}
+unsafe fn optional_c_byte_to_rust(byte: &*const c_uchar) -> Option<u8> {
   if byte.is_null() {
     None
   } else {
-    Some(*byte)
+    Some(**byte)
+  }
+}
+fn check_output_pointer(ptr: &*mut c_void) -> Result<(), OutputError> {
+  if ptr.is_null() {
+    Err(OutputError::into_invalid_parameter(anyhow!(
+      "Output pointer is null"
+    )))
+  } else {
+    Ok(())
   }
 }
 #[unsafe(no_mangle)]
@@ -227,6 +248,8 @@ pub unsafe extern "C" fn whisprs_list_voices(
   voices_len: *mut usize,
 ) -> WhisprsOutputError {
   let closure = || {
+    check_output_pointer(&voices_ptr.cast())?;
+    check_output_pointer(&voices_len.cast())?;
     let synthesizer = optional_c_string_to_rust(&synthesizer);
     let name = optional_c_string_to_rust(&name);
     let language = optional_c_string_to_rust(&language);
@@ -260,6 +283,8 @@ pub unsafe extern "C" fn whisprs_list_speech_synthesizers(
   synthesizers_len: *mut usize,
 ) -> WhisprsOutputError {
   let closure = || {
+    check_output_pointer(&synthesizers_ptr.cast())?;
+    check_output_pointer(&synthesizers_len.cast())?;
     let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> = list_speech_synthesizers()?
       .into_iter()
       .map(|synthesizer| Box::into_raw(Box::new(synthesizer.into())))
@@ -278,6 +303,8 @@ pub unsafe extern "C" fn whisprs_list_speech_synthesizers_supporting_audio_data(
   synthesizers_len: *mut usize,
 ) -> WhisprsOutputError {
   let closure = || {
+    check_output_pointer(&synthesizers_ptr.cast())?;
+    check_output_pointer(&synthesizers_len.cast())?;
     let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> =
       list_speech_synthesizers_supporting_audio_data()?
         .into_iter()
@@ -310,6 +337,8 @@ pub unsafe extern "C" fn whisprs_list_braille_backends(
   backends_len: *mut usize,
 ) -> WhisprsOutputError {
   let closure = || {
+    check_output_pointer(&backends_ptr.cast())?;
+    check_output_pointer(&backends_len.cast())?;
     let backends: Vec<*mut WhisprsBrailleBackendMetadata> = list_braille_backends()?
       .into_iter()
       .map(|backend| Box::into_raw(Box::new(backend.into())))
@@ -348,13 +377,14 @@ pub unsafe extern "C" fn whisprs_speak_to_audio_data(
   result_ptr: *mut *mut WhisprsSpeechResult,
 ) -> WhisprsOutputError {
   let closure = || {
+    check_output_pointer(&result_ptr.cast())?;
     let synthesizer = optional_c_string_to_rust(&synthesizer);
     let voice = optional_c_string_to_rust(&voice);
     let language = optional_c_string_to_rust(&language);
-    let rate = optional_c_byte_to_rust(rate);
-    let volume = optional_c_byte_to_rust(volume);
-    let pitch = optional_c_byte_to_rust(pitch);
-    let text = CStr::from_ptr(text).to_str().unwrap();
+    let rate = optional_c_byte_to_rust(&rate);
+    let volume = optional_c_byte_to_rust(&volume);
+    let pitch = optional_c_byte_to_rust(&pitch);
+    let text = c_string_to_rust(&text)?;
     let result = speak_to_audio_data(synthesizer, voice, language, rate, volume, pitch, text)?;
     *result_ptr = Box::into_raw(Box::new(result.into()));
     Ok(())
@@ -382,10 +412,10 @@ pub unsafe extern "C" fn whisprs_speak_to_audio_output(
     let synthesizer = optional_c_string_to_rust(&synthesizer);
     let voice = optional_c_string_to_rust(&voice);
     let language = optional_c_string_to_rust(&language);
-    let rate = optional_c_byte_to_rust(rate);
-    let volume = optional_c_byte_to_rust(volume);
-    let pitch = optional_c_byte_to_rust(pitch);
-    let text = CStr::from_ptr(text).to_str().unwrap();
+    let rate = optional_c_byte_to_rust(&rate);
+    let volume = optional_c_byte_to_rust(&volume);
+    let pitch = optional_c_byte_to_rust(&pitch);
+    let text = c_string_to_rust(&text)?;
     speak_to_audio_output(
       synthesizer,
       voice,
@@ -414,7 +444,7 @@ pub unsafe extern "C" fn whisprs_braille(
 ) -> WhisprsOutputError {
   let closure = || {
     let backend = optional_c_string_to_rust(&backend);
-    let text = CStr::from_ptr(text).to_str().unwrap();
+    let text = c_string_to_rust(&text)?;
     braille(backend, text)
   };
   handle_error_if_needed(closure())
@@ -435,11 +465,11 @@ pub unsafe extern "C" fn whisprs_output(
     let synthesizer = optional_c_string_to_rust(&synthesizer);
     let voice = optional_c_string_to_rust(&voice);
     let language = optional_c_string_to_rust(&language);
-    let rate = optional_c_byte_to_rust(rate);
-    let volume = optional_c_byte_to_rust(volume);
-    let pitch = optional_c_byte_to_rust(pitch);
+    let rate = optional_c_byte_to_rust(&rate);
+    let volume = optional_c_byte_to_rust(&volume);
+    let pitch = optional_c_byte_to_rust(&pitch);
     let braille_backend = optional_c_string_to_rust(&braille_backend);
-    let text = CStr::from_ptr(text).to_str().unwrap();
+    let text = c_string_to_rust(&text)?;
     output(
       synthesizer,
       voice,

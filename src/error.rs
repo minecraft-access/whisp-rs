@@ -43,6 +43,8 @@ pub enum OutputError {
   },
   #[error("Failed to initialize whisp-rs: {0}")]
   InitializeFailed(anyhow::Error),
+  #[error("Invalid parameter: {0}")]
+  InvalidParameter(anyhow::Error),
   #[error("Unknown error: {0}")]
   Unknown(anyhow::Error),
 }
@@ -108,6 +110,13 @@ impl OutputError {
     T: Into<anyhow::Error>,
   {
     OutputError::InitializeFailed(error.into())
+  }
+  #[must_use]
+  pub fn into_invalid_parameter<T>(error: T) -> Self
+  where
+    T: Into<anyhow::Error>,
+  {
+    OutputError::InvalidParameter(error.into())
   }
   #[must_use]
   pub fn into_unknown<T>(error: T) -> Self
