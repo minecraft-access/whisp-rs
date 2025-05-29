@@ -26,9 +26,10 @@ use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 use anyhow::anyhow;
 use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
 use std::any::Any;
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
-use std::sync::{mpsc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 thread_local! {
   static BACKENDS: RefCell<HashMap<String, Box<dyn Backend>>> = RefCell::new(HashMap::new());
@@ -64,13 +65,17 @@ type OperationResult = Result<OperationOk, OutputError>;
 type Operation = Box<dyn FnOnce() -> OperationResult + Send + Sync>;
 pub struct Whisprs {
   operation_tx: Mutex<mpsc::Sender<(Operation, mpsc::Sender<OperationResult>)>>,
+  should_stop: Arc<AtomicBool>,
+  thread_handle: Mutex<Cell<Option<thread::JoinHandle<()>>>>,
 }
 impl Whisprs {
   pub fn new() -> Result<Self, OutputError> {
     let (operation_tx, operation_rx) =
       mpsc::channel::<(Operation, mpsc::Sender<OperationResult>)>();
+    let should_stop = Arc::new(AtomicBool::new(false));
     let (result_tx, result_rx) = mpsc::channel::<Result<(), OutputError>>();
-    thread::spawn(move || {
+    let thread_should_stop = should_stop.clone();
+    let thread_handle = thread::spawn(move || {
       let closure = || {
         let (output_stream, output_stream_handle) =
           OutputStream::try_default().map_err(OutputError::into_initialize_failed)?;
@@ -108,6 +113,9 @@ impl Whisprs {
       result_tx.send(closure()).unwrap();
       for (operation, sender) in operation_rx {
         sender.send(operation()).unwrap();
+        if thread_should_stop.load(Ordering::Relaxed) {
+          return;
+        }
       }
     });
     result_rx
@@ -115,6 +123,8 @@ impl Whisprs {
       .map_err(OutputError::into_initialize_failed)??;
     Ok(Whisprs {
       operation_tx: Mutex::new(operation_tx),
+      should_stop,
+      thread_handle: Mutex::new(Cell::new(Some(thread_handle))),
     })
   }
   fn perform_operation(&self, closure: Operation) -> OperationResult {
@@ -478,5 +488,20 @@ impl Whisprs {
       (Err(OutputError::NoVoices) | Ok(()), right) => right,
       (left, _) => left,
     }
+  }
+}
+impl Drop for Whisprs {
+  fn drop(&mut self) {
+    self.should_stop.store(true, Ordering::Relaxed);
+    let closure = || Ok(Box::new(()) as OperationOk);
+    self.perform_operation(Box::new(closure)).unwrap();
+    self
+      .thread_handle
+      .lock()
+      .unwrap()
+      .take()
+      .unwrap()
+      .join()
+      .unwrap();
   }
 }
