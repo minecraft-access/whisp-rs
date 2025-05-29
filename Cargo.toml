@@ -36,4 +36,4 @@ crate-type = ["cdylib", "lib"]
 bindgen = "0.71.1"
 build-target = "0.4.0"
 cbindgen = "0.29.0"
-cc = "1.2.23"
+cc = "1.2.24"
