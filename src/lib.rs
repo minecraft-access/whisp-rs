@@ -32,9 +32,33 @@ use std::sync::{mpsc, OnceLock};
 use std::thread;
 thread_local! {
   static BACKENDS: RefCell<HashMap<String, Box<dyn Backend>>> = RefCell::new(HashMap::new());
-  static OUTPUT_STREAM: OnceCell<Option<OutputStream>> = const {OnceCell::new() };
+  static OUTPUT_STREAM: OnceCell<OutputStream> = const {OnceCell::new() };
+  static SINK: OnceCell<Sink> = OnceCell::new();
 }
-static SINK: OnceLock<Sink> = OnceLock::new();
+fn stop_audio() -> Result<(), OutputError> {
+  SINK.with(|cell| {
+    cell
+      .get()
+      .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
+      .stop();
+    Ok(())
+  })
+}
+fn play_audio(result: SpeechResult) -> Result<(), OutputError> {
+  let buffer = result
+    .pcm
+    .chunks_exact(2)
+    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+    .collect::<Vec<i16>>();
+  let source = SamplesBuffer::new(1, result.sample_rate, buffer);
+  SINK.with(|cell| {
+    cell
+      .get()
+      .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
+      .append(source);
+    Ok(())
+  })
+}
 type OperationOk = Box<dyn Any + Send + Sync>;
 type OperationResult = Result<OperationOk, OutputError>;
 type Operation = Box<dyn FnOnce() -> OperationResult + Send + Sync>;
@@ -52,8 +76,8 @@ pub fn initialize() -> Result<(), OutputError> {
         OutputStream::try_default().map_err(OutputError::into_initialize_failed)?;
       let sink =
         Sink::try_new(&output_stream_handle).map_err(OutputError::into_initialize_failed)?;
-      let _result = OUTPUT_STREAM.with(|cell| cell.set(Some(output_stream)));
-      let _result = SINK.set(sink);
+      let _result = OUTPUT_STREAM.with(|cell| cell.set(output_stream));
+      let _result = SINK.with(|cell| cell.set(sink));
       let mut backends: Vec<Result<Box<dyn Backend>, OutputError>> = Vec::new();
       backends.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn Backend>));
       #[cfg(windows)]
@@ -321,22 +345,10 @@ pub fn speak_to_audio_output(
             pitch,
             &text,
           )?;
-          let buffer = result
-            .pcm
-            .chunks_exact(2)
-            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect::<Vec<i16>>();
-          let source = SamplesBuffer::new(1, result.sample_rate, buffer);
           if interrupt {
-            SINK
-              .get()
-              .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
-              .stop();
+            stop_audio()?;
           }
-          SINK
-            .get()
-            .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
-            .append(source);
+          play_audio(result)?;
         }
         (_, Some(synthesizer)) => synthesizer.speak(
           voice.as_deref(),
@@ -367,17 +379,11 @@ pub fn stop_speech(synthesizer: Option<&str>) -> Result<(), OutputError> {
           synthesizer.as_speech_synthesizer_to_audio_output(),
         ) {
           (None, None) => Err(OutputError::into_speech_not_supported(&synthesizer_name))?,
-          (Some(_), None) => SINK
-            .get()
-            .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
-            .stop(),
+          (Some(_), None) => stop_audio()?,
           (_, Some(synthesizer)) => synthesizer.stop_speech()?,
         }
       } else {
-        SINK
-          .get()
-          .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
-          .stop();
+        stop_audio()?;
         for synthesizer in backends
           .iter()
           .filter_map(|backend| backend.1.as_speech_synthesizer_to_audio_output())
