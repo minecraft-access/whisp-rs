@@ -43,39 +43,47 @@ pub struct EspeakNg {
 }
 impl Backend for EspeakNg {
   fn new() -> Result<Self, OutputError> {
-    let mut counter = INITIALIZE_COUNTER.lock().map_err(|_| OutputError::into_unknown(anyhow!("Failed to lock eSpeak NG initialize counter")))?;
+    let mut counter = INITIALIZE_COUNTER.lock().map_err(|_| {
+      OutputError::into_unknown(anyhow!("Failed to lock eSpeak NG initialize counter"))
+    })?;
     if let Some(reference) = counter.upgrade() {
-    let sample_rate = reference.sample_rate;
-    let default_voice = reference.default_voice.clone();
-    let result = EspeakNg {
-      default_voice,
-      sample_rate,
-      _reference: reference,
-    };
-    Ok(result)
+      let sample_rate = reference.sample_rate;
+      let default_voice = reference.default_voice.clone();
+      let result = EspeakNg {
+        default_voice,
+        sample_rate,
+        _reference: reference,
+      };
+      Ok(result)
     } else {
-    let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
-    let path_cstr = CString::new(".").map_err(OutputError::into_unknown)?;
-    let sample_rate: u32 = unsafe {
-      espeak_Initialize(output, 0, path_cstr.as_ptr(), 0)
-        .try_into()
-        .map_err(OutputError::into_unknown)?
-    };
-    let default_voice = "en".to_owned();
-    let reference = Arc::new(EspeakReference { default_voice: default_voice.clone(), sample_rate });
-    *counter = Arc::downgrade(&reference);
-    let result = EspeakNg {
-      default_voice,
-      sample_rate,
-      _reference: reference,
-    };
-    Ok(result)
+      let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
+      let path_cstr = CString::new(".").map_err(OutputError::into_unknown)?;
+      let sample_rate: u32 = unsafe {
+        espeak_Initialize(output, 0, path_cstr.as_ptr(), 0)
+          .try_into()
+          .map_err(OutputError::into_unknown)?
+      };
+      let default_voice = "en".to_owned();
+      let reference = Arc::new(EspeakReference {
+        default_voice: default_voice.clone(),
+        sample_rate,
+      });
+      *counter = Arc::downgrade(&reference);
+      let result = EspeakNg {
+        default_voice,
+        sample_rate,
+        _reference: reference,
+      };
+      Ok(result)
     }
   }
   fn name(&self) -> String {
     "eSpeak NG".to_owned()
   }
   fn list_voices(&self) -> Result<Vec<Voice>, OutputError> {
+    let _counter = INITIALIZE_COUNTER.lock().map_err(|_| {
+      OutputError::into_unknown(anyhow!("Failed to lock eSpeak NG initialize counter"))
+    })?;
     let mut voice_spec = espeak_VOICE {
       name: std::ptr::null(),
       languages: std::ptr::null(),
@@ -197,6 +205,9 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
     pitch: Option<u8>,
     text: &str,
   ) -> Result<SpeechResult, OutputError> {
+    let _counter = INITIALIZE_COUNTER.lock().map_err(|_| {
+      OutputError::into_unknown(anyhow!("Failed to lock eSpeak NG initialize counter"))
+    })?;
     match (voice, language) {
       (None, None) => {
         let voice_cstr = CString::new(&*self.default_voice).map_err(OutputError::into_unknown)?;
