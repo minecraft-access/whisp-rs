@@ -6,12 +6,12 @@ use crate::backends::{
 use crate::error::OutputError;
 use crate::metadata::Voice;
 use anyhow::anyhow;
-use windows::core::{interface, w, BSTR, GUID, HRESULT};
 use windows::Win32::Foundation::VARIANT_BOOL;
 use windows::Win32::System::Com::{
-  CoCreateInstance, IDispatch, IDispatch_Impl, IDispatch_Vtbl, CLSCTX_ALL,
+  CLSCTX_ALL, CoCreateInstance, IDispatch, IDispatch_Impl, IDispatch_Vtbl,
 };
 use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+use windows::core::{BSTR, GUID, HRESULT, interface, w};
 #[interface("123DEDB4-2CF6-429C-A2AB-CC809E5516CE")]
 unsafe trait IJawsApi: IDispatch {
   fn RunScript(&self, ScriptName: BSTR, vbSuccess: *mut VARIANT_BOOL) -> HRESULT;

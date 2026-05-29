@@ -2,7 +2,7 @@
 #![warn(clippy::pedantic)]
 pub mod audio;
 mod backends;
-//mod c_api;
+mod c_api;
 pub mod error;
 //mod jni;
 pub mod metadata;
@@ -24,13 +24,16 @@ use crate::backends::{Backend, BrailleBackend};
 use crate::error::OutputError;
 use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 use anyhow::anyhow;
-use rodio::{buffer::SamplesBuffer, conversions::SampleTypeConverter, DeviceSinkBuilder, MixerDeviceSink, nz, Player};
+use rodio::{
+  DeviceSinkBuilder, MixerDeviceSink, Player, buffer::SamplesBuffer,
+  conversions::SampleTypeConverter, nz,
+};
 use std::any::Any;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::num::NonZero;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 thread_local! {
   static BACKENDS: RefCell<HashMap<String, Box<dyn Backend>>> = RefCell::new(HashMap::new());
@@ -41,7 +44,9 @@ fn stop_audio() -> Result<(), OutputError> {
   PLAYER.with(|cell| {
     cell
       .get()
-      .ok_or(OutputError::into_unknown(anyhow!("PLAYER contains nothing")))?
+      .ok_or(OutputError::into_unknown(anyhow!(
+        "PLAYER contains nothing"
+      )))?
       .stop();
     Ok(())
   })
@@ -51,13 +56,14 @@ fn play_audio(result: &SpeechResult) -> Result<(), OutputError> {
     .pcm
     .chunks_exact(2)
     .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]));
-  let samples = SampleTypeConverter::new(samples)
-    .collect::<Vec<f32>>();
+  let samples = SampleTypeConverter::new(samples).collect::<Vec<f32>>();
   let source = SamplesBuffer::new(nz!(1), NonZero::new(result.sample_rate).unwrap(), samples);
   PLAYER.with(|cell| {
     cell
       .get()
-      .ok_or(OutputError::into_unknown(anyhow!("PLAYER contains nothing")))?
+      .ok_or(OutputError::into_unknown(anyhow!(
+        "PLAYER contains nothing"
+      )))?
       .append(source);
     Ok(())
   })
@@ -79,9 +85,9 @@ impl Whisprs {
     let thread_should_stop = should_stop.clone();
     let thread_handle = thread::spawn(move || {
       let closure = || {
-        let mixer_device_sink = DeviceSinkBuilder::open_default_sink().map_err(OutputError::into_initialize_failed)?;
-        let player =
-          Player::connect_new(mixer_device_sink.mixer());
+        let mixer_device_sink =
+          DeviceSinkBuilder::open_default_sink().map_err(OutputError::into_initialize_failed)?;
+        let player = Player::connect_new(mixer_device_sink.mixer());
         let _result = MIXER_DEVICE_SINK.with(|cell| cell.set(mixer_device_sink));
         let _result = PLAYER.with(|cell| cell.set(player));
         let mut backends: Vec<Result<Box<dyn Backend>, OutputError>> = Vec::new();

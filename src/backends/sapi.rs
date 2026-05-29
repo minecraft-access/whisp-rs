@@ -10,17 +10,16 @@ use quick_xml::writer::Writer;
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::io::Cursor;
-use windows::core::{w, GUID, PWSTR};
 use windows::Win32::Globalization::LCIDToLocaleName;
-use windows::Win32::Media::Audio::{WAVEFORMATEX, WAVE_FORMAT_PCM};
+use windows::Win32::Media::Audio::{WAVE_FORMAT_PCM, WAVEFORMATEX};
 use windows::Win32::Media::Speech::{
-  ISpObjectToken, ISpObjectTokenCategory, ISpStream, ISpVoice, SpObjectToken,
-  SpObjectTokenCategory, SpStream, SpVoice, SPCAT_VOICES, SPF_ASYNC, SPF_IS_XML, SPF_PARSE_SAPI,
-  SPF_PURGEBEFORESPEAK,
+  ISpObjectToken, ISpObjectTokenCategory, ISpStream, ISpVoice, SPCAT_VOICES, SPF_ASYNC, SPF_IS_XML,
+  SPF_PARSE_SAPI, SPF_PURGEBEFORESPEAK, SpObjectToken, SpObjectTokenCategory, SpStream, SpVoice,
 };
-use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, STREAM_SEEK_SET};
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, STREAM_SEEK_SET};
 use windows::Win32::System::SystemServices::LOCALE_NAME_MAX_LENGTH;
 use windows::Win32::UI::Shell::SHCreateMemStream;
+use windows::core::{GUID, PWSTR, w};
 #[allow(clippy::too_many_lines)]
 fn set_parameters(
   synthesizer: &ISpVoice,

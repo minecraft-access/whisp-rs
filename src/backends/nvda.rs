@@ -8,8 +8,8 @@ use crate::backends::{
 };
 use crate::error::OutputError;
 use crate::metadata::Voice;
-use windows::core::{Result, HSTRING};
 use windows::Win32::Foundation::WIN32_ERROR;
+use windows::core::{HSTRING, Result};
 fn to_result(error: u32) -> Result<()> {
   WIN32_ERROR(error).ok()
 }

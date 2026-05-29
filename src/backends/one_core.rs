@@ -6,10 +6,10 @@ use crate::error::OutputError;
 use crate::metadata::Voice;
 use rodio::{Decoder, Source};
 use std::io::Cursor;
-use windows::core::{Interface, HSTRING};
 use windows::Media::SpeechSynthesis::SpeechSynthesizer;
 use windows::Storage::Streams::{Buffer, InputStreamOptions};
 use windows::Win32::System::WinRT::IMemoryBufferByteAccess;
+use windows::core::{HSTRING, Interface};
 pub struct OneCore {
   synthesizer: SpeechSynthesizer,
 }

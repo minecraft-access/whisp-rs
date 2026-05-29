@@ -14,7 +14,7 @@ use objc2_avf_audio::{
 };
 use objc2_foundation::NSString;
 use std::ptr::NonNull;
-use std::sync::{mpsc, Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock, mpsc};
 fn set_parameters(
   voice: Option<&str>,
   language: Option<&str>,

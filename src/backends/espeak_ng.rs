@@ -7,15 +7,15 @@ use crate::error::OutputError;
 use crate::metadata::Voice;
 use anyhow::anyhow;
 use espeakng_sys::{
-  espeakCHARS_AUTO, espeakRATE_MAXIMUM, espeakRATE_MINIMUM, espeak_AUDIO_OUTPUT,
-  espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS, espeak_ERROR, espeak_ERROR_EE_OK, espeak_EVENT,
-  espeak_Initialize, espeak_ListVoices, espeak_PARAMETER_espeakPITCH, espeak_PARAMETER_espeakRATE,
-  espeak_PARAMETER_espeakVOLUME, espeak_POSITION_TYPE, espeak_SetParameter,
-  espeak_SetSynthCallback, espeak_SetVoiceByName, espeak_SetVoiceByProperties, espeak_Synth,
-  espeak_Terminate, espeak_VOICE,
+  espeak_AUDIO_OUTPUT, espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS, espeak_ERROR,
+  espeak_ERROR_EE_OK, espeak_EVENT, espeak_Initialize, espeak_ListVoices,
+  espeak_PARAMETER_espeakPITCH, espeak_PARAMETER_espeakRATE, espeak_PARAMETER_espeakVOLUME,
+  espeak_POSITION_TYPE, espeak_SetParameter, espeak_SetSynthCallback, espeak_SetVoiceByName,
+  espeak_SetVoiceByProperties, espeak_Synth, espeak_Terminate, espeak_VOICE, espeakCHARS_AUTO,
+  espeakRATE_MAXIMUM, espeakRATE_MINIMUM,
 };
 use std::cell::Cell;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::iter::once;
 use std::os::raw::{c_char, c_int, c_short};
 use std::sync::{Arc, Mutex, Weak};
@@ -315,7 +315,8 @@ unsafe extern "C" fn synth_callback(
 ) -> c_int {
   if !wav.is_null() {
     let sample_count: usize = sample_count.try_into().unwrap();
-    let wav_slice = unsafe { std::slice::from_raw_parts_mut(wav.cast::<c_char>(), 2 * sample_count) };
+    let wav_slice =
+      unsafe { std::slice::from_raw_parts_mut(wav.cast::<c_char>(), 2 * sample_count) };
     let mut wav_vec = wav_slice
       .iter()
       .map(|byte| *byte as u8)
