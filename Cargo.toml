@@ -6,34 +6,34 @@ description = "A TTS library that lets applications use numerous TTS engines and
 homepage = "https://github.com/minecraft-access/whisp-rs"
 repository = "https://github.com/minecraft-access/whisp-rs"
 license = "GPL-3.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.102"
 espeakng-sys = { git = "https://github.com/emassey0135/espeakng-sys.git", version = "0.3.0", features = ["clang-runtime"] }
-jni = "0.21.1"
-rodio = { version = "0.20.1", default-features = false, features = ["wav", "hound"] }
-thiserror = "2.0.12"
+jni = "0.22.4"
+rodio = { version = "0.22.2", default-features = false, features = ["playback", "wav", "hound"] }
+thiserror = "2.0.18"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ssip-client-async = "0.15.0"
+ssip-client-async = "0.19.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6.1"
-block2 = "0.6.1"
-objc2-foundation = { version = "0.3.1", default-features = false, features = ["std", "NSArray", "NSEnumerator", "NSRunLoop", "NSString"] }
-objc2-avf-audio = { version = "0.3.1", default-features = false, features = ["AVAudioBuffer", "AVAudioFormat", "AVAudioTypes", "AVSpeechSynthesis", "block2", "objc2-core-audio-types", "std"] }
+objc2 = "0.6.4"
+block2 = "0.6.2"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSEnumerator", "NSRunLoop", "NSString"] }
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["AVAudioBuffer", "AVAudioFormat", "AVAudioTypes", "AVSpeechSynthesis", "block2", "objc2-core-audio-types", "std"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61.1", features = ["Media_Core", "Media_SpeechSynthesis", "Storage_Streams", "Win32_Globalization", "Win32_Media_Audio", "Win32_Media_Speech", "Win32_System_Com", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_System_Variant", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
-windows-core = "0.61.2"
-quick-xml = "0.37.5"
+windows = { version = "0.62.2", features = ["Media_Core", "Media_SpeechSynthesis", "Storage_Streams", "Win32_Globalization", "Win32_Media_Audio", "Win32_Media_Speech", "Win32_System_Com", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_System_Variant", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-core = "0.62.2"
+quick-xml = "0.40.1"
 
 [lib]
 crate-type = ["cdylib", "lib"]
 
 [build-dependencies]
-bindgen = "0.71.1"
-build-target = "0.4.0"
-cbindgen = "0.29.0"
-cc = "1.2.24"
+bindgen = "0.72.1"
+build-target = "0.8.0"
+cbindgen = "0.29.3"
+cc = "1.2.62"

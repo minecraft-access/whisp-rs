@@ -12,11 +12,11 @@ use std::cell::RefCell;
 pub struct SpeechDispatcher {
   default_output_module: String,
   default_language: String,
-  client: RefCell<Client<fifo::UnixStream>>,
+  client: RefCell<Client<fifo::synchronous::UnixStream>>,
 }
 impl Backend for SpeechDispatcher {
   fn new() -> Result<Self, OutputError> {
-    let mut client = fifo::Builder::new()
+    let mut client = fifo::synchronous::Builder::new()
       .build()
       .map_err(OutputError::into_unknown)?;
     client

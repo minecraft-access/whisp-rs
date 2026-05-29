@@ -5,7 +5,7 @@ use std::env;
 use std::path::Path;
 use std::process::Command;
 fn main() {
-  if Os::target().unwrap() == Os::Windows {
+  if Os::target() == Os::Windows {
     let output_dir = env::var("OUT_DIR").unwrap();
     Command::new("midl")
       .arg("/server")
@@ -13,9 +13,9 @@ fn main() {
       .arg("/prefix")
       .arg("all")
       .arg("nvdaController_")
-      .arg(match Arch::target().unwrap() {
+      .arg(match Arch::target() {
         Arch::X86_64 => "/x64",
-        Arch::AARCH64 => "/arm64",
+        Arch::AArch64 => "/arm64",
         _ => panic!("Unsupported CPU archetecture"),
       })
       .arg("/out")

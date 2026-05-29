@@ -24,38 +24,40 @@ use crate::backends::{Backend, BrailleBackend};
 use crate::error::OutputError;
 use crate::metadata::{BrailleBackendMetadata, SpeechSynthesizerMetadata, Voice};
 use anyhow::anyhow;
-use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
+use rodio::{buffer::SamplesBuffer, conversions::SampleTypeConverter, DeviceSinkBuilder, MixerDeviceSink, nz, Player};
 use std::any::Any;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
+use std::num::NonZero;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 thread_local! {
   static BACKENDS: RefCell<HashMap<String, Box<dyn Backend>>> = RefCell::new(HashMap::new());
-  static OUTPUT_STREAM: OnceCell<OutputStream> = const {OnceCell::new() };
-  static SINK: OnceCell<Sink> = const { OnceCell::new() };
+  static MIXER_DEVICE_SINK: OnceCell<MixerDeviceSink> = const {OnceCell::new() };
+  static PLAYER: OnceCell<Player> = const { OnceCell::new() };
 }
 fn stop_audio() -> Result<(), OutputError> {
-  SINK.with(|cell| {
+  PLAYER.with(|cell| {
     cell
       .get()
-      .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
+      .ok_or(OutputError::into_unknown(anyhow!("PLAYER contains nothing")))?
       .stop();
     Ok(())
   })
 }
 fn play_audio(result: &SpeechResult) -> Result<(), OutputError> {
-  let buffer = result
+  let samples = result
     .pcm
     .chunks_exact(2)
-    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-    .collect::<Vec<i16>>();
-  let source = SamplesBuffer::new(1, result.sample_rate, buffer);
-  SINK.with(|cell| {
+    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]));
+  let samples = SampleTypeConverter::new(samples)
+    .collect::<Vec<f32>>();
+  let source = SamplesBuffer::new(nz!(1), NonZero::new(result.sample_rate).unwrap(), samples);
+  PLAYER.with(|cell| {
     cell
       .get()
-      .ok_or(OutputError::into_unknown(anyhow!("SINK contains nothing")))?
+      .ok_or(OutputError::into_unknown(anyhow!("PLAYER contains nothing")))?
       .append(source);
     Ok(())
   })
@@ -77,12 +79,11 @@ impl Whisprs {
     let thread_should_stop = should_stop.clone();
     let thread_handle = thread::spawn(move || {
       let closure = || {
-        let (output_stream, output_stream_handle) =
-          OutputStream::try_default().map_err(OutputError::into_initialize_failed)?;
-        let sink =
-          Sink::try_new(&output_stream_handle).map_err(OutputError::into_initialize_failed)?;
-        let _result = OUTPUT_STREAM.with(|cell| cell.set(output_stream));
-        let _result = SINK.with(|cell| cell.set(sink));
+        let mixer_device_sink = DeviceSinkBuilder::open_default_sink().map_err(OutputError::into_initialize_failed)?;
+        let player =
+          Player::connect_new(mixer_device_sink.mixer());
+        let _result = MIXER_DEVICE_SINK.with(|cell| cell.set(mixer_device_sink));
+        let _result = PLAYER.with(|cell| cell.set(player));
         let mut backends: Vec<Result<Box<dyn Backend>, OutputError>> = Vec::new();
         backends.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn Backend>));
         #[cfg(windows)]
