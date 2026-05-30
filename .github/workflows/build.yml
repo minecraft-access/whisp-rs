@@ -55,3 +55,35 @@ jobs:
         with:
           name: ${{ matrix.platform.os-name }}
           path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.output-file }}
+  package-jar:
+    name: Package Java bindings JAR
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Download native libraries
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded
+      - name: Lay out native resources
+        run: |
+          for dir in downloaded/*/; do
+            name=$(basename "$dir")
+            mkdir -p java/lib/src/main/resources/natives/$name
+            cp "$dir"/* java/lib/src/main/resources/natives/$name/
+          done
+          cp espeak-ng-data.zip java/lib/src/main/resources/
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Build JAR
+        working-directory: java
+        run: ./gradlew :lib:jar
+      - name: Capture JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisprs-jar
+          path: java/lib/build/libs/*.jar

@@ -30,6 +30,12 @@ impl Drop for EspeakReference {
   }
 }
 static INITIALIZE_COUNTER: Mutex<Weak<EspeakReference>> = Mutex::new(Weak::new());
+static DATA_PATH: Mutex<Option<String>> = Mutex::new(None);
+pub fn set_data_path(path: String) {
+  if let Ok(mut guard) = DATA_PATH.lock() {
+    *guard = Some(path);
+  }
+}
 fn handle_espeak_error(error: espeak_ERROR) -> Result<(), anyhow::Error> {
   match error {
     espeak_ERROR_EE_OK => Ok(()),
@@ -57,7 +63,12 @@ impl Backend for EspeakNg {
       Ok(result)
     } else {
       let output: espeak_AUDIO_OUTPUT = espeak_AUDIO_OUTPUT_AUDIO_OUTPUT_SYNCHRONOUS;
-      let path_cstr = CString::new(".").map_err(OutputError::into_unknown)?;
+      let path = DATA_PATH
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .unwrap_or_else(|| ".".to_owned());
+      let path_cstr = CString::new(path).map_err(OutputError::into_unknown)?;
       let sample_rate: u32 = unsafe {
         espeak_Initialize(output, 0, path_cstr.as_ptr(), 0)
           .try_into()

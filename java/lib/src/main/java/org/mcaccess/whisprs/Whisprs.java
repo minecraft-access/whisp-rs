@@ -9,6 +9,9 @@ import org.mcaccess.whisprs.metadata.SpeechSynthesizerMetadata;
 import org.mcaccess.whisprs.metadata.Voice;
 
 public class Whisprs implements AutoCloseable {
+  static {
+    NativeLoader.load();
+  }
   private static final Cleaner CLEANER = Cleaner.create();
   private long handle;
   private final Cleaner.Cleanable cleanable;
@@ -24,6 +27,7 @@ public class Whisprs implements AutoCloseable {
   }
   private static native long create();
   private static native void destroy(long handle);
+  static native void setEspeakDataPath(@NotNull String path);
   private static final class DestroyAction implements Runnable {
     private final long handle;
     DestroyAction(long handle) {

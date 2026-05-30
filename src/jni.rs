@@ -5,8 +5,8 @@ use ::jni::errors::{Error, ErrorPolicy};
 use ::jni::objects::{JClass, JObjectArray, JString};
 use ::jni::refs::Reference as _;
 use ::jni::strings::JNIString;
-use ::jni::sys::{jboolean, jlong, JNI_FALSE};
-use ::jni::{bind_java_type, jni_str, native_method, Env, JNIVersion, JavaVM, NativeMethod};
+use ::jni::sys::{JNI_FALSE, jboolean, jlong};
+use ::jni::{Env, JNIVersion, JavaVM, NativeMethod, bind_java_type, jni_str, native_method};
 use anyhow::anyhow;
 impl From<Error> for OutputError {
   fn from(error: Error) -> Self {
@@ -151,10 +151,7 @@ fn jni_string_to_rust(env: &mut Env, string: &JString) -> Result<String, OutputE
   }
 }
 #[allow(clippy::cast_sign_loss)]
-fn jni_optional_byte_to_rust(
-  env: &mut Env,
-  byte: &JavaByteRef,
-) -> Result<Option<u8>, OutputError> {
+fn jni_optional_byte_to_rust(env: &mut Env, byte: &JavaByteRef) -> Result<Option<u8>, OutputError> {
   if byte.is_null() {
     Ok(None)
   } else {
@@ -205,6 +202,21 @@ fn destroy<'local>(
   if !whisprs.is_null() {
     let _whisprs = unsafe { Box::from_raw(whisprs) };
   }
+  Ok(())
+}
+const SET_ESPEAK_DATA_PATH: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_setEspeakDataPath",
+  static fn set_espeak_data_path(path: JString),
+};
+fn set_espeak_data_path<'local>(
+  env: &mut Env<'local>,
+  _class: JClass<'local>,
+  path: JString<'local>,
+) -> Result<(), OutputError> {
+  let path = jni_string_to_rust(env, &path)?;
+  crate::backends::espeak_ng::set_data_path(path);
   Ok(())
 }
 const LIST_VOICES: NativeMethod = native_method! {
@@ -291,8 +303,11 @@ fn list_speech_synthesizers<'local>(
   for synthesizer in &synthesizers {
     refs.push(speech_synthesizer_metadata_to_jni(env, synthesizer)?);
   }
-  let array =
-    JObjectArray::<SpeechSynthesizerMetadataRef>::new(env, refs.len(), &SpeechSynthesizerMetadataRef::null())?;
+  let array = JObjectArray::<SpeechSynthesizerMetadataRef>::new(
+    env,
+    refs.len(),
+    &SpeechSynthesizerMetadataRef::null(),
+  )?;
   for (index, synthesizer) in refs.iter().enumerate() {
     array.set_element(env, index, synthesizer)?;
   }
@@ -318,8 +333,11 @@ fn list_speech_synthesizers_supporting_audio_data<'local>(
   for synthesizer in &synthesizers {
     refs.push(speech_synthesizer_metadata_to_jni(env, synthesizer)?);
   }
-  let array =
-    JObjectArray::<SpeechSynthesizerMetadataRef>::new(env, refs.len(), &SpeechSynthesizerMetadataRef::null())?;
+  let array = JObjectArray::<SpeechSynthesizerMetadataRef>::new(
+    env,
+    refs.len(),
+    &SpeechSynthesizerMetadataRef::null(),
+  )?;
   for (index, synthesizer) in refs.iter().enumerate() {
     array.set_element(env, index, synthesizer)?;
   }
@@ -348,8 +366,11 @@ fn list_braille_backends<'local>(
     let priority = backend.priority as i8;
     refs.push(BrailleBackendMetadataRef::new(env, &name, priority)?);
   }
-  let array =
-    JObjectArray::<BrailleBackendMetadataRef>::new(env, refs.len(), &BrailleBackendMetadataRef::null())?;
+  let array = JObjectArray::<BrailleBackendMetadataRef>::new(
+    env,
+    refs.len(),
+    &BrailleBackendMetadataRef::null(),
+  )?;
   for (index, backend) in refs.iter().enumerate() {
     array.set_element(env, index, backend)?;
   }
@@ -562,6 +583,7 @@ fn output<'local>(
 const NATIVE_METHODS: &[NativeMethod] = &[
   CREATE,
   DESTROY,
+  SET_ESPEAK_DATA_PATH,
   LIST_VOICES,
   LIST_SPEECH_SYNTHESIZERS,
   LIST_SPEECH_SYNTHESIZERS_SUPPORTING_AUDIO_DATA,
@@ -579,8 +601,8 @@ pub extern "system" fn JNI_OnLoad(
   _reserved: *mut std::ffi::c_void,
 ) -> ::jni::sys::jint {
   let vm = unsafe { JavaVM::from_raw(vm) };
-  let _ = vm.attach_current_thread(|env| {
-    unsafe { env.register_native_methods(jni_str!("org/mcaccess/whisprs/Whisprs"), NATIVE_METHODS) }
+  let _ = vm.attach_current_thread(|env| unsafe {
+    env.register_native_methods(jni_str!("org/mcaccess/whisprs/Whisprs"), NATIVE_METHODS)
   });
   JNIVersion::V1_6.into()
 }
