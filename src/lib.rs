@@ -4,7 +4,7 @@ pub mod audio;
 mod backends;
 mod c_api;
 pub mod error;
-//mod jni;
+mod jni;
 pub mod metadata;
 use crate::audio::SpeechResult;
 #[cfg(target_os = "macos")]

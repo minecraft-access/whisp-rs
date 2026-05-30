@@ -1,14 +1,18 @@
+#![allow(clippy::needless_pass_by_value)]
 use crate::error::OutputError;
-use crate::{
-  braille, initialize, list_braille_backends, list_speech_synthesizers,
-  list_speech_synthesizers_supporting_audio_data, list_voices, output, speak_to_audio_data,
-  speak_to_audio_output, stop_speech, SpeechSynthesizerMetadata,
-};
-use ::jni::errors::Error;
-use ::jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
-use ::jni::sys::{jboolean, JNI_FALSE, JNI_TRUE};
-use ::jni::JNIEnv;
+use crate::{SpeechSynthesizerMetadata, Whisprs};
+use ::jni::errors::{Error, ErrorPolicy};
+use ::jni::objects::{JClass, JObjectArray, JString};
+use ::jni::refs::Reference as _;
+use ::jni::strings::JNIString;
+use ::jni::sys::{jboolean, jlong, JNI_FALSE};
+use ::jni::{bind_java_type, jni_str, native_method, Env, JNIVersion, JavaVM, NativeMethod};
 use anyhow::anyhow;
+impl From<Error> for OutputError {
+  fn from(error: Error) -> Self {
+    OutputError::into_unknown(error)
+  }
+}
 fn error_to_exception_class(error: &OutputError) -> String {
   "org/mcaccess/whisprs/error/".to_owned()
     + match error {
@@ -42,439 +46,541 @@ fn error_to_exception_class(error: &OutputError) -> String {
       OutputError::Unknown(_) => "UnknownException",
     }
 }
-fn throw_exception_when_needed<T: std::default::Default>(
-  env: &mut JNIEnv,
-  result: Result<T, OutputError>,
-) -> T {
-  match result {
-    Ok(value) => value,
-    Err(OutputError::Unknown(error)) => {
-      if let Some(Error::JavaException) = error.downcast_ref::<Error>() {
-        Default::default()
-      } else {
-        let error = OutputError::into_unknown(error);
-        let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-        Default::default()
-      }
+struct ThrowOutputError;
+impl<T: Default> ErrorPolicy<T, OutputError> for ThrowOutputError {
+  type Captures<'unowned_env_local: 'native_method, 'native_method> = ();
+  fn on_error<'unowned_env_local: 'native_method, 'native_method>(
+    env: &mut Env<'unowned_env_local>,
+    _cap: &mut Self::Captures<'unowned_env_local, 'native_method>,
+    err: OutputError,
+  ) -> ::jni::errors::Result<T> {
+    if env.exception_check() {
+      return Ok(T::default());
     }
-    Err(error) => {
-      let _ = env.throw_new(error_to_exception_class(&error), error.to_string());
-      Default::default()
+    let class = JNIString::from(error_to_exception_class(&err));
+    let message = JNIString::from(err.to_string());
+    let _ = env.throw_new(class, message);
+    Ok(T::default())
+  }
+  fn on_panic<'unowned_env_local: 'native_method, 'native_method>(
+    env: &mut Env<'unowned_env_local>,
+    _cap: &mut Self::Captures<'unowned_env_local, 'native_method>,
+    payload: Box<dyn std::any::Any + Send + 'static>,
+  ) -> ::jni::errors::Result<T> {
+    if env.exception_check() {
+      return Ok(T::default());
     }
+    let message = payload
+      .downcast_ref::<&str>()
+      .map(|message| (*message).to_owned())
+      .or_else(|| payload.downcast_ref::<String>().cloned())
+      .unwrap_or_else(|| "Rust panic in native method".to_owned());
+    let _ = env.throw_new(
+      jni_str!("org/mcaccess/whisprs/error/UnknownException"),
+      JNIString::from(message),
+    );
+    Ok(T::default())
   }
 }
+bind_java_type! {
+  SpeechSynthesizerMetadataRef => org.mcaccess.whisprs.metadata.SpeechSynthesizerMetadata,
+  constructors {
+    fn new(
+      name: JString,
+      supports_speaking_to_audio_data: jboolean,
+      supports_speech_parameters: jboolean,
+    ),
+  },
+}
+bind_java_type! {
+  VoiceRef => org.mcaccess.whisprs.metadata.Voice,
+  type_map = {
+    SpeechSynthesizerMetadataRef => org.mcaccess.whisprs.metadata.SpeechSynthesizerMetadata,
+  },
+  constructors {
+    fn new(
+      synthesizer: SpeechSynthesizerMetadataRef,
+      display_name: JString,
+      name: JString,
+      languages: JString[],
+      priority: jbyte,
+    ),
+  },
+}
+bind_java_type! {
+  BrailleBackendMetadataRef => org.mcaccess.whisprs.metadata.BrailleBackendMetadata,
+  constructors {
+    fn new(name: JString, priority: jbyte),
+  },
+}
+bind_java_type! {
+  SpeechResultRef => org.mcaccess.whisprs.audio.SpeechResult,
+  constructors {
+    fn new(pcm: jbyte[], sample_format: jbyte, sample_rate: jint),
+  },
+}
+bind_java_type! {
+  WhisprsRef => org.mcaccess.whisprs.Whisprs,
+  fields {
+    handle: jlong,
+  },
+}
+bind_java_type! {
+  JavaByteRef => java.lang.Byte,
+  methods {
+    fn byte_value() -> jbyte,
+  },
+}
 fn jni_optional_string_to_rust(
-  env: &mut JNIEnv,
+  env: &mut Env,
   string: &JString,
 ) -> Result<Option<String>, OutputError> {
-  let null = JObject::null();
-  let string = if env
-    .is_same_object(string, &null)
-    .map_err(OutputError::into_unknown)?
-  {
-    None
+  if string.is_null() {
+    Ok(None)
   } else {
-    Some(
-      env
-        .get_string(string)
-        .map_err(OutputError::into_unknown)?
-        .into(),
-    )
-  };
-  Ok(string)
+    Ok(Some(string.try_to_string(env)?))
+  }
 }
-fn jni_string_to_rust(env: &mut JNIEnv, string: &JString) -> Result<String, OutputError> {
-  let null = JObject::null();
-  if env
-    .is_same_object(string, &null)
-    .map_err(OutputError::into_unknown)?
-  {
+fn jni_string_to_rust(env: &mut Env, string: &JString) -> Result<String, OutputError> {
+  if string.is_null() {
     Err(OutputError::into_invalid_parameter(anyhow!(
       "Non-optional string parameter is null"
     )))
   } else {
-    Ok(
-      env
-        .get_string(string)
-        .map_err(OutputError::into_unknown)?
-        .into(),
-    )
+    Ok(string.try_to_string(env)?)
   }
 }
 #[allow(clippy::cast_sign_loss)]
-fn jni_optional_byte_to_rust(env: &mut JNIEnv, byte: &JObject) -> Result<Option<u8>, OutputError> {
-  let null = JObject::null();
-  let byte = if env
-    .is_same_object(byte, &null)
-    .map_err(OutputError::into_unknown)?
-  {
-    None
+fn jni_optional_byte_to_rust(
+  env: &mut Env,
+  byte: &JavaByteRef,
+) -> Result<Option<u8>, OutputError> {
+  if byte.is_null() {
+    Ok(None)
   } else {
-    Some(
-      env
-        .call_method(byte, "byteValue", "()B", &[])
-        .map_err(OutputError::into_unknown)?
-        .b()
-        .map_err(OutputError::into_unknown)? as u8,
-    )
-  };
-  Ok(byte)
+    Ok(Some(byte.byte_value(env)? as u8))
+  }
 }
 fn speech_synthesizer_metadata_to_jni<'local>(
-  env: &mut JNIEnv<'local>,
+  env: &mut Env<'local>,
   synthesizer: &SpeechSynthesizerMetadata,
-) -> Result<JObject<'local>, OutputError> {
-  let speech_synthesizer_metadata_class = env
-    .find_class("org/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata")
-    .map_err(OutputError::into_unknown)?;
-  let name = env
-    .new_string(&synthesizer.name)
-    .map_err(OutputError::into_unknown)?;
-  let supports_speaking_to_audio_data = if synthesizer.supports_speaking_to_audio_data {
-    JNI_TRUE
-  } else {
-    JNI_FALSE
-  };
-  let supports_speech_parameters = if synthesizer.supports_speech_parameters {
-    JNI_TRUE
-  } else {
-    JNI_FALSE
-  };
-  let synthesizer = env
-    .new_object(
-      &speech_synthesizer_metadata_class,
-      "(Ljava/lang/String;ZZ)V",
-      &[
-        JValue::Object(&name),
-        JValue::Bool(supports_speaking_to_audio_data),
-        JValue::Bool(supports_speech_parameters),
-      ],
-    )
-    .map_err(OutputError::into_unknown)?;
-  Ok(synthesizer)
+) -> Result<SpeechSynthesizerMetadataRef<'local>, OutputError> {
+  let name = env.new_string(&synthesizer.name)?;
+  Ok(SpeechSynthesizerMetadataRef::new(
+    env,
+    &name,
+    jboolean::from(synthesizer.supports_speaking_to_audio_data),
+    jboolean::from(synthesizer.supports_speech_parameters),
+  )?)
 }
-fn objects_to_jni_array<'local>(
-  env: &mut JNIEnv<'local>,
-  class: &JClass<'local>,
-  objects: &[JObject<'local>],
-) -> Result<JObjectArray<'local>, OutputError> {
-  let array = env
-    .new_object_array(
-      objects
-        .len()
-        .try_into()
-        .map_err(OutputError::into_unknown)?,
-      class,
-      JObject::null(),
-    )
-    .map_err(OutputError::into_unknown)?;
-  for (index, object) in objects.iter().enumerate() {
-    env
-      .set_object_array_element(
-        &array,
-        index.try_into().map_err(OutputError::into_unknown)?,
-        object,
-      )
-      .map_err(OutputError::into_unknown)?;
+fn whisprs_from_handle<'a>(env: &mut Env, this: &WhisprsRef) -> Result<&'a Whisprs, OutputError> {
+  let handle = this.handle(env)?;
+  let whisprs = handle as *mut Whisprs;
+  unsafe { whisprs.as_ref() }
+    .ok_or_else(|| OutputError::into_invalid_parameter(anyhow!("Whisprs handle is null")))
+}
+const CREATE: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_create",
+  static fn create() -> jlong,
+};
+fn create<'local>(_env: &mut Env<'local>, _class: JClass<'local>) -> Result<jlong, OutputError> {
+  let whisprs = Whisprs::new()?;
+  Ok(Box::into_raw(Box::new(whisprs)) as jlong)
+}
+const DESTROY: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_destroy",
+  static fn destroy(handle: jlong),
+};
+#[allow(clippy::unnecessary_wraps)]
+fn destroy<'local>(
+  _env: &mut Env<'local>,
+  _class: JClass<'local>,
+  handle: jlong,
+) -> Result<(), OutputError> {
+  let whisprs = handle as *mut Whisprs;
+  if !whisprs.is_null() {
+    let _whisprs = unsafe { Box::from_raw(whisprs) };
   }
-  Ok(array)
+  Ok(())
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_initialize<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
-) {
-  let closure = || initialize();
-  throw_exception_when_needed(&mut env, closure());
-}
+const LIST_VOICES: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_listVoices",
+  type_map = {
+    VoiceRef => org.mcaccess.whisprs.metadata.Voice,
+  },
+  fn list_voices(
+    synthesizer: JString,
+    name: JString,
+    language: JString,
+    needs_audio_data: jboolean,
+  ) -> VoiceRef[],
+};
 #[allow(clippy::cast_possible_wrap)]
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listVoices<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
+fn list_voices<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
   synthesizer: JString<'local>,
   name: JString<'local>,
   language: JString<'local>,
   needs_audio_data: jboolean,
-) -> JObjectArray<'local> {
-  let mut closure = || {
-    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
-    let name = jni_optional_string_to_rust(&mut env, &name)?;
-    let language = jni_optional_string_to_rust(&mut env, &language)?;
-    let needs_audio_data: bool = needs_audio_data != JNI_FALSE;
-    let voices = list_voices(
-      synthesizer.as_deref(),
-      name.as_deref(),
-      language.as_deref(),
-      needs_audio_data,
-    )?;
-    let voice_class = env
-      .find_class("org/mcaccess/whisprs/metadata/Voice")
-      .map_err(OutputError::into_unknown)?;
-    let string_class = env
-      .find_class("java/lang/String")
-      .map_err(OutputError::into_unknown)?;
-    let voices = voices
-      .into_iter()
-      .map(|voice| {
-      let synthesizer = speech_synthesizer_metadata_to_jni(&mut env, &voice.synthesizer)?;
-      let display_name = env.new_string(&voice.display_name)?;
-      let name = env.new_string(&voice.name)?;
-      let languages = voice.languages.into_iter().map(|language| env.new_string(language).map_err(OutputError::into_unknown).map(std::convert::Into::into)).collect::<Result<Vec<JObject>, OutputError>>()?;
-      let languages = objects_to_jni_array(&mut env, &string_class, &languages)?;
-      let priority = voice.priority as i8;
-      let voice = env
-        .new_object(
-          &voice_class,
-          "(Lorg/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;B)V",
-          &[
-            JValue::Object(&synthesizer),
-            JValue::Object(&display_name),
-            JValue::Object(&name),
-            JValue::Object(&languages),
-            JValue::Byte(priority),
-          ],
-        )?;
-        Ok::<_, anyhow::Error>(voice)
-    })
-    .collect::<Result<Vec<JObject>, anyhow::Error>>().map_err(OutputError::into_unknown)?;
-    let voices = objects_to_jni_array(&mut env, &voice_class, &voices)?;
-    Ok(voices)
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result)
+) -> Result<JObjectArray<'local, VoiceRef<'local>>, OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let synthesizer = jni_optional_string_to_rust(env, &synthesizer)?;
+  let name = jni_optional_string_to_rust(env, &name)?;
+  let language = jni_optional_string_to_rust(env, &language)?;
+  let needs_audio_data: bool = needs_audio_data != JNI_FALSE;
+  let voices = whisprs.list_voices(
+    synthesizer.as_deref(),
+    name.as_deref(),
+    language.as_deref(),
+    needs_audio_data,
+  )?;
+  let mut voice_refs: Vec<VoiceRef<'local>> = Vec::with_capacity(voices.len());
+  for voice in voices {
+    let synthesizer = speech_synthesizer_metadata_to_jni(env, &voice.synthesizer)?;
+    let display_name = env.new_string(&voice.display_name)?;
+    let name = env.new_string(&voice.name)?;
+    let mut languages: Vec<JString<'local>> = Vec::with_capacity(voice.languages.len());
+    for language in voice.languages {
+      languages.push(env.new_string(language)?);
+    }
+    let languages_array = JObjectArray::<JString>::new(env, languages.len(), &JString::null())?;
+    for (index, language) in languages.iter().enumerate() {
+      languages_array.set_element(env, index, language)?;
+    }
+    let priority = voice.priority as i8;
+    voice_refs.push(VoiceRef::new(
+      env,
+      &synthesizer,
+      &display_name,
+      &name,
+      &languages_array,
+      priority,
+    )?);
+  }
+  let array = JObjectArray::<VoiceRef>::new(env, voice_refs.len(), &VoiceRef::null())?;
+  for (index, voice) in voice_refs.iter().enumerate() {
+    array.set_element(env, index, voice)?;
+  }
+  Ok(array)
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizers<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
-) -> JObjectArray<'local> {
-  let mut closure = || {
-    let speech_synthesizer_metadata_class = env
-      .find_class("org/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata")
-      .map_err(OutputError::into_unknown)?;
-    let synthesizers = list_speech_synthesizers()?;
-    let synthesizers = synthesizers
-      .iter()
-      .map(|synthesizer| speech_synthesizer_metadata_to_jni(&mut env, synthesizer))
-      .collect::<Result<Vec<JObject>, OutputError>>()?;
-    let synthesizers =
-      objects_to_jni_array(&mut env, &speech_synthesizer_metadata_class, &synthesizers)?;
-    Ok(synthesizers)
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result)
+const LIST_SPEECH_SYNTHESIZERS: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizers",
+  type_map = {
+    SpeechSynthesizerMetadataRef => org.mcaccess.whisprs.metadata.SpeechSynthesizerMetadata,
+  },
+  fn list_speech_synthesizers() -> SpeechSynthesizerMetadataRef[],
+};
+fn list_speech_synthesizers<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
+) -> Result<JObjectArray<'local, SpeechSynthesizerMetadataRef<'local>>, OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let synthesizers = whisprs.list_speech_synthesizers()?;
+  let mut refs: Vec<SpeechSynthesizerMetadataRef<'local>> = Vec::with_capacity(synthesizers.len());
+  for synthesizer in &synthesizers {
+    refs.push(speech_synthesizer_metadata_to_jni(env, synthesizer)?);
+  }
+  let array =
+    JObjectArray::<SpeechSynthesizerMetadataRef>::new(env, refs.len(), &SpeechSynthesizerMetadataRef::null())?;
+  for (index, synthesizer) in refs.iter().enumerate() {
+    array.set_element(env, index, synthesizer)?;
+  }
+  Ok(array)
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizersSupportingAudioData<
-  'local,
->(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
-) -> JObjectArray<'local> {
-  let mut closure = || {
-    let synthesizers = list_speech_synthesizers_supporting_audio_data()?;
-    let speech_synthesizer_metadata_class = env
-      .find_class("org/mcaccess/whisprs/metadata/SpeechSynthesizerMetadata")
-      .map_err(OutputError::into_unknown)?;
-    let synthesizers = synthesizers
-      .iter()
-      .map(|synthesizer| speech_synthesizer_metadata_to_jni(&mut env, synthesizer))
-      .collect::<Result<Vec<JObject>, OutputError>>()?;
-    let synthesizers =
-      objects_to_jni_array(&mut env, &speech_synthesizer_metadata_class, &synthesizers)?;
-    Ok(synthesizers)
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result)
+const LIST_SPEECH_SYNTHESIZERS_SUPPORTING_AUDIO_DATA: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_listSpeechSynthesizersSupportingAudioData",
+  type_map = {
+    SpeechSynthesizerMetadataRef => org.mcaccess.whisprs.metadata.SpeechSynthesizerMetadata,
+  },
+  fn list_speech_synthesizers_supporting_audio_data() -> SpeechSynthesizerMetadataRef[],
+};
+fn list_speech_synthesizers_supporting_audio_data<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
+) -> Result<JObjectArray<'local, SpeechSynthesizerMetadataRef<'local>>, OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let synthesizers = whisprs.list_speech_synthesizers_supporting_audio_data()?;
+  let mut refs: Vec<SpeechSynthesizerMetadataRef<'local>> = Vec::with_capacity(synthesizers.len());
+  for synthesizer in &synthesizers {
+    refs.push(speech_synthesizer_metadata_to_jni(env, synthesizer)?);
+  }
+  let array =
+    JObjectArray::<SpeechSynthesizerMetadataRef>::new(env, refs.len(), &SpeechSynthesizerMetadataRef::null())?;
+  for (index, synthesizer) in refs.iter().enumerate() {
+    array.set_element(env, index, synthesizer)?;
+  }
+  Ok(array)
 }
+const LIST_BRAILLE_BACKENDS: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends",
+  type_map = {
+    BrailleBackendMetadataRef => org.mcaccess.whisprs.metadata.BrailleBackendMetadata,
+  },
+  fn list_braille_backends() -> BrailleBackendMetadataRef[],
+};
 #[allow(clippy::cast_possible_wrap)]
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_listBrailleBackends<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
-) -> JObjectArray<'local> {
-  let mut closure = || {
-    let backends = list_braille_backends()?;
-    let braille_backend_metadata_class = env
-      .find_class("org/mcaccess/whisprs/metadata/BrailleBackendMetadata")
-      .map_err(OutputError::into_unknown)?;
-    let backends = backends
-      .into_iter()
-      .map(|backend| {
-        let name = env.new_string(&backend.name)?;
-        let priority = backend.priority as i8;
-        let backend = env.new_object(
-          &braille_backend_metadata_class,
-          "(Ljava/lang/String;B)V",
-          &[JValue::Object(&name), JValue::Byte(priority)],
-        )?;
-        Ok::<_, anyhow::Error>(backend)
-      })
-      .collect::<Result<Vec<JObject>, anyhow::Error>>()
-      .map_err(OutputError::into_unknown)?;
-    let backends = objects_to_jni_array(&mut env, &braille_backend_metadata_class, &backends)?;
-    Ok(backends)
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result)
+fn list_braille_backends<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
+) -> Result<JObjectArray<'local, BrailleBackendMetadataRef<'local>>, OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let backends = whisprs.list_braille_backends()?;
+  let mut refs: Vec<BrailleBackendMetadataRef<'local>> = Vec::with_capacity(backends.len());
+  for backend in backends {
+    let name = env.new_string(&backend.name)?;
+    let priority = backend.priority as i8;
+    refs.push(BrailleBackendMetadataRef::new(env, &name, priority)?);
+  }
+  let array =
+    JObjectArray::<BrailleBackendMetadataRef>::new(env, refs.len(), &BrailleBackendMetadataRef::null())?;
+  for (index, backend) in refs.iter().enumerate() {
+    array.set_element(env, index, backend)?;
+  }
+  Ok(array)
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioData<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
+const SPEAK_TO_AUDIO_DATA: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_speakToAudioData",
+  type_map = {
+    SpeechResultRef => org.mcaccess.whisprs.audio.SpeechResult,
+    JavaByteRef => java.lang.Byte,
+  },
+  fn speak_to_audio_data(
+    synthesizer: JString,
+    voice: JString,
+    language: JString,
+    rate: JavaByteRef,
+    volume: JavaByteRef,
+    pitch: JavaByteRef,
+    text: JString,
+  ) -> SpeechResultRef,
+};
+#[allow(clippy::too_many_arguments)]
+fn speak_to_audio_data<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
   synthesizer: JString<'local>,
   voice: JString<'local>,
   language: JString<'local>,
-  rate: JObject<'local>,
-  volume: JObject<'local>,
-  pitch: JObject<'local>,
+  rate: JavaByteRef<'local>,
+  volume: JavaByteRef<'local>,
+  pitch: JavaByteRef<'local>,
   text: JString<'local>,
-) -> JObject<'local> {
-  let mut closure = || {
-    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
-    let voice = jni_optional_string_to_rust(&mut env, &voice)?;
-    let language = jni_optional_string_to_rust(&mut env, &language)?;
-    let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
-    let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
-    let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
-    let text = jni_string_to_rust(&mut env, &text)?;
-    let result = speak_to_audio_data(
-      synthesizer.as_deref(),
-      voice.as_deref(),
-      language.as_deref(),
-      rate,
-      volume,
-      pitch,
-      &text,
-    )?;
-    let buffer = env
-      .byte_array_from_slice(&result.pcm)
-      .map_err(OutputError::into_unknown)?;
-    let speech_result_class = env
-      .find_class("org/mcaccess/whisprs/audio/SpeechResult")
-      .map_err(OutputError::into_unknown)?;
-    let result = env
-      .new_object(
-        &speech_result_class,
-        "([BBI)V",
-        &[
-          JValue::Object(&buffer),
-          JValue::Byte(result.sample_format as i8),
-          JValue::Int(
-            result
-              .sample_rate
-              .try_into()
-              .map_err(OutputError::into_unknown)?,
-          ),
-        ],
-      )
-      .map_err(OutputError::into_unknown)?;
-    Ok(result)
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result)
+) -> Result<SpeechResultRef<'local>, OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let synthesizer = jni_optional_string_to_rust(env, &synthesizer)?;
+  let voice = jni_optional_string_to_rust(env, &voice)?;
+  let language = jni_optional_string_to_rust(env, &language)?;
+  let rate = jni_optional_byte_to_rust(env, &rate)?;
+  let volume = jni_optional_byte_to_rust(env, &volume)?;
+  let pitch = jni_optional_byte_to_rust(env, &pitch)?;
+  let text = jni_string_to_rust(env, &text)?;
+  let result = whisprs.speak_to_audio_data(
+    synthesizer.as_deref(),
+    voice.as_deref(),
+    language.as_deref(),
+    rate,
+    volume,
+    pitch,
+    &text,
+  )?;
+  let buffer = env.byte_array_from_slice(&result.pcm)?;
+  #[allow(clippy::cast_possible_wrap)]
+  let sample_format = result.sample_format as i8;
+  let sample_rate = result
+    .sample_rate
+    .try_into()
+    .map_err(OutputError::into_unknown)?;
+  Ok(SpeechResultRef::new(
+    env,
+    &buffer,
+    sample_format,
+    sample_rate,
+  )?)
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
+const SPEAK_TO_AUDIO_OUTPUT: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_speakToAudioOutput",
+  type_map = {
+    JavaByteRef => java.lang.Byte,
+  },
+  fn speak_to_audio_output(
+    synthesizer: JString,
+    voice: JString,
+    language: JString,
+    rate: JavaByteRef,
+    volume: JavaByteRef,
+    pitch: JavaByteRef,
+    text: JString,
+    interrupt: jboolean,
+  ),
+};
+#[allow(clippy::too_many_arguments)]
+fn speak_to_audio_output<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
   synthesizer: JString<'local>,
   voice: JString<'local>,
   language: JString<'local>,
-  rate: JObject<'local>,
-  volume: JObject<'local>,
-  pitch: JObject<'local>,
+  rate: JavaByteRef<'local>,
+  volume: JavaByteRef<'local>,
+  pitch: JavaByteRef<'local>,
   text: JString<'local>,
   interrupt: jboolean,
-) {
-  let mut closure = || {
-    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
-    let voice = jni_optional_string_to_rust(&mut env, &voice)?;
-    let language = jni_optional_string_to_rust(&mut env, &language)?;
-    let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
-    let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
-    let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
-    let text = jni_string_to_rust(&mut env, &text)?;
-    let interrupt: bool = interrupt != JNI_FALSE;
-    speak_to_audio_output(
-      synthesizer.as_deref(),
-      voice.as_deref(),
-      language.as_deref(),
-      rate,
-      volume,
-      pitch,
-      &text,
-      interrupt,
-    )
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result);
+) -> Result<(), OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let synthesizer = jni_optional_string_to_rust(env, &synthesizer)?;
+  let voice = jni_optional_string_to_rust(env, &voice)?;
+  let language = jni_optional_string_to_rust(env, &language)?;
+  let rate = jni_optional_byte_to_rust(env, &rate)?;
+  let volume = jni_optional_byte_to_rust(env, &volume)?;
+  let pitch = jni_optional_byte_to_rust(env, &pitch)?;
+  let text = jni_string_to_rust(env, &text)?;
+  let interrupt: bool = interrupt != JNI_FALSE;
+  whisprs.speak_to_audio_output(
+    synthesizer.as_deref(),
+    voice.as_deref(),
+    language.as_deref(),
+    rate,
+    volume,
+    pitch,
+    &text,
+    interrupt,
+  )
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_stopSpeech<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
+const STOP_SPEECH: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_stopSpeech",
+  fn stop_speech(synthesizer: JString),
+};
+fn stop_speech<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
   synthesizer: JString<'local>,
-) {
-  let mut closure = || {
-    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
-    stop_speech(synthesizer.as_deref())
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result);
+) -> Result<(), OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let synthesizer = jni_optional_string_to_rust(env, &synthesizer)?;
+  whisprs.stop_speech(synthesizer.as_deref())
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_braille<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
+const BRAILLE: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_braille",
+  fn braille(backend: JString, text: JString),
+};
+fn braille<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
   backend: JString<'local>,
   text: JString<'local>,
-) {
-  let mut closure = || {
-    let backend = jni_optional_string_to_rust(&mut env, &backend)?;
-    let text = jni_string_to_rust(&mut env, &text)?;
-    braille(backend.as_deref(), &text)
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result);
+) -> Result<(), OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let backend = jni_optional_string_to_rust(env, &backend)?;
+  let text = jni_string_to_rust(env, &text)?;
+  whisprs.braille(backend.as_deref(), &text)
 }
-#[no_mangle]
-pub extern "system" fn Java_org_mcaccess_whisprs_Whisprs_output<'local>(
-  mut env: JNIEnv<'local>,
-  _class: JClass<'local>,
+const OUTPUT: NativeMethod = native_method! {
+  java_type = "org.mcaccess.whisprs.Whisprs",
+  rust_type = WhisprsRef,
+  error_policy = ThrowOutputError,
+  export = "Java_org_mcaccess_whisprs_Whisprs_output",
+  type_map = {
+    JavaByteRef => java.lang.Byte,
+  },
+  fn output(
+    synthesizer: JString,
+    voice: JString,
+    language: JString,
+    rate: JavaByteRef,
+    volume: JavaByteRef,
+    pitch: JavaByteRef,
+    braille_backend: JString,
+    text: JString,
+    interrupt: jboolean,
+  ),
+};
+#[allow(clippy::too_many_arguments)]
+fn output<'local>(
+  env: &mut Env<'local>,
+  this: WhisprsRef<'local>,
   synthesizer: JString<'local>,
   voice: JString<'local>,
   language: JString<'local>,
-  rate: JObject<'local>,
-  volume: JObject<'local>,
-  pitch: JObject<'local>,
+  rate: JavaByteRef<'local>,
+  volume: JavaByteRef<'local>,
+  pitch: JavaByteRef<'local>,
   braille_backend: JString<'local>,
   text: JString<'local>,
   interrupt: jboolean,
-) {
-  let mut closure = || {
-    let synthesizer = jni_optional_string_to_rust(&mut env, &synthesizer)?;
-    let voice = jni_optional_string_to_rust(&mut env, &voice)?;
-    let language = jni_optional_string_to_rust(&mut env, &language)?;
-    let rate = jni_optional_byte_to_rust(&mut env, &rate)?;
-    let volume = jni_optional_byte_to_rust(&mut env, &volume)?;
-    let pitch = jni_optional_byte_to_rust(&mut env, &pitch)?;
-    let braille_backend = jni_optional_string_to_rust(&mut env, &braille_backend)?;
-    let text = jni_string_to_rust(&mut env, &text)?;
-    let interrupt: bool = interrupt != JNI_FALSE;
-    output(
-      synthesizer.as_deref(),
-      voice.as_deref(),
-      language.as_deref(),
-      rate,
-      volume,
-      pitch,
-      braille_backend.as_deref(),
-      &text,
-      interrupt,
-    )
-  };
-  let result = closure();
-  throw_exception_when_needed(&mut env, result);
+) -> Result<(), OutputError> {
+  let whisprs = whisprs_from_handle(env, &this)?;
+  let synthesizer = jni_optional_string_to_rust(env, &synthesizer)?;
+  let voice = jni_optional_string_to_rust(env, &voice)?;
+  let language = jni_optional_string_to_rust(env, &language)?;
+  let rate = jni_optional_byte_to_rust(env, &rate)?;
+  let volume = jni_optional_byte_to_rust(env, &volume)?;
+  let pitch = jni_optional_byte_to_rust(env, &pitch)?;
+  let braille_backend = jni_optional_string_to_rust(env, &braille_backend)?;
+  let text = jni_string_to_rust(env, &text)?;
+  let interrupt: bool = interrupt != JNI_FALSE;
+  whisprs.output(
+    synthesizer.as_deref(),
+    voice.as_deref(),
+    language.as_deref(),
+    rate,
+    volume,
+    pitch,
+    braille_backend.as_deref(),
+    &text,
+    interrupt,
+  )
+}
+const NATIVE_METHODS: &[NativeMethod] = &[
+  CREATE,
+  DESTROY,
+  LIST_VOICES,
+  LIST_SPEECH_SYNTHESIZERS,
+  LIST_SPEECH_SYNTHESIZERS_SUPPORTING_AUDIO_DATA,
+  LIST_BRAILLE_BACKENDS,
+  SPEAK_TO_AUDIO_DATA,
+  SPEAK_TO_AUDIO_OUTPUT,
+  STOP_SPEECH,
+  BRAILLE,
+  OUTPUT,
+];
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn JNI_OnLoad(
+  vm: *mut ::jni::sys::JavaVM,
+  _reserved: *mut std::ffi::c_void,
+) -> ::jni::sys::jint {
+  let vm = unsafe { JavaVM::from_raw(vm) };
+  let _ = vm.attach_current_thread(|env| {
+    unsafe { env.register_native_methods(jni_str!("org/mcaccess/whisprs/Whisprs"), NATIVE_METHODS) }
+  });
+  JNIVersion::V1_6.into()
 }

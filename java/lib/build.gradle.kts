@@ -1,14 +1,14 @@
 plugins {
-    `java-library`
+  `java-library`
 }
 repositories {
-    mavenCentral()
+  mavenCentral()
 }
 dependencies {
-  compileOnly("org.jetbrains:annotations:26.0.2")
+  compileOnly("org.jetbrains:annotations:26.1.0")
 }
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
+  toolchain {
+    languageVersion = JavaLanguageVersion.of(25)
+  }
 }
