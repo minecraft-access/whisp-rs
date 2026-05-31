@@ -21,31 +21,31 @@ jobs:
             original-output-file: libwhisp_rs.so
             output-file: libwhisp_rs_${{ github.ref_name }}_aarch64.so
           - os-name: windows-x86_64
-            runs-on: windows-2025
+            runs-on: windows-2025-vs-2026
             target: x86_64-pc-windows-msvc
             arch: x64
             original-output-file: whisp_rs.dll
             output-file: whisp_rs_${{ github.ref_name }}_x86_64.dll
           - os-name: windows-aarch64
-            runs-on: windows-2025
+            runs-on: windows-11-arm
             target: aarch64-pc-windows-msvc
-            arch: amd64_arm64
+            arch: arm64
             original-output-file: whisp_rs.dll
             output-file: whisp_rs_${{ github.ref_name }}_aarch64.dll
           - os-name: macos-x86_64
-            runs-on: macOS-13
+            runs-on: macOS-26-intel
             target: x86_64-apple-darwin
             original-output-file: libwhisp_rs.dylib
             output-file: libwhisp_rs_${{ github.ref_name }}_x86_64.dylib
           - os-name: macos-aarch64
-            runs-on: macOS-15
+            runs-on: macOS-26
             target: aarch64-apple-darwin
             original-output-file: libwhisp_rs.dylib
             output-file: libwhisp_rs_${{ github.ref_name }}_aarch64.dylib
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Upload espeak-ng-data for release
         run: "gh release upload ${{ github.event.release.tag_name }} espeak-ng-data.zip"
         env:
