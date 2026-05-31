@@ -1,5 +1,6 @@
 plugins {
   `java-library`
+  `maven-publish`
 }
 group = "org.mcaccess"
 version = "0.4.0"
@@ -52,4 +53,12 @@ sourceSets.main {
 tasks.named<ProcessResources>("processResources") {
   mustRunAfter(prepareLocalNatives)
   duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+publishing {
+  publications {
+    create<MavenPublication>("maven") {
+      from(components["java"])
+      artifactId = "whisprs"
+    }
+  }
 }
