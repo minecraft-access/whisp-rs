@@ -73,7 +73,9 @@ pub unsafe extern "C" fn whisprs_get_last_error() -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn whisprs_free_error(error: *mut c_char) {
   if !error.is_null() {
-    let _error = CString::from_raw(error);
+    unsafe {
+      let _error = CString::from_raw(error);
+    }
   }
 }
 fn handle_error_if_needed(result: Result<(), OutputError>) -> WhisprsOutputError {
@@ -202,7 +204,7 @@ unsafe fn optional_c_string_to_rust(string: &*const c_char) -> Option<&str> {
   if string.is_null() {
     None
   } else {
-    Some(CStr::from_ptr(*string).to_str().unwrap())
+    Some(unsafe { CStr::from_ptr(*string) }.to_str().unwrap())
   }
 }
 unsafe fn c_string_to_rust(string: &*const c_char) -> Result<&str, OutputError> {
@@ -211,11 +213,15 @@ unsafe fn c_string_to_rust(string: &*const c_char) -> Result<&str, OutputError> 
       "Non-optional string parameter is null"
     )))
   } else {
-    Ok(CStr::from_ptr(*string).to_str().unwrap())
+    Ok(unsafe { CStr::from_ptr(*string) }.to_str().unwrap())
   }
 }
 unsafe fn optional_c_byte_to_rust(byte: &*const c_uchar) -> Option<u8> {
-  if byte.is_null() { None } else { Some(**byte) }
+  if byte.is_null() {
+    None
+  } else {
+    Some(unsafe { **byte })
+  }
 }
 fn check_output_pointer(ptr: &*mut c_void) -> Result<(), OutputError> {
   if ptr.is_null() {
@@ -227,16 +233,17 @@ fn check_output_pointer(ptr: &*mut c_void) -> Result<(), OutputError> {
   }
 }
 unsafe fn handle_to_rust<'a>(handle: *mut Whisprs) -> Result<&'a Whisprs, OutputError> {
-  handle
-    .as_ref()
+  unsafe { handle.as_ref() }
     .ok_or_else(|| OutputError::into_invalid_parameter(anyhow!("Whisprs handle is null")))
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn whisprs_new(handle_ptr: *mut *mut Whisprs) -> WhisprsOutputError {
-  let closure = || {
+  let closure = || -> Result<(), OutputError> {
     check_output_pointer(&handle_ptr.cast())?;
     let whisprs = Whisprs::new()?;
-    *handle_ptr = Box::into_raw(Box::new(whisprs));
+    unsafe {
+      *handle_ptr = Box::into_raw(Box::new(whisprs));
+    }
     Ok(())
   };
   handle_error_if_needed(closure())
@@ -244,7 +251,9 @@ pub unsafe extern "C" fn whisprs_new(handle_ptr: *mut *mut Whisprs) -> WhisprsOu
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn whisprs_free(handle: *mut Whisprs) {
   if !handle.is_null() {
-    let _whisprs = Box::from_raw(handle);
+    unsafe {
+      let _whisprs = Box::from_raw(handle);
+    }
   }
 }
 #[unsafe(no_mangle)]
@@ -257,23 +266,25 @@ pub unsafe extern "C" fn whisprs_list_voices(
   voices_ptr: *mut *mut *mut WhisprsVoice,
   voices_len: *mut usize,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    check_output_pointer(&voices_ptr.cast())?;
-    check_output_pointer(&voices_len.cast())?;
-    let synthesizer = optional_c_string_to_rust(&synthesizer);
-    let name = optional_c_string_to_rust(&name);
-    let language = optional_c_string_to_rust(&language);
-    let voices: Vec<*mut WhisprsVoice> = whisprs
-      .list_voices(synthesizer, name, language, needs_audio_data)?
-      .into_iter()
-      .map(|voice| Box::into_raw(Box::new(voice.into())))
-      .collect();
-    *voices_len = voices.len();
-    let mut voices = voices.into_boxed_slice();
-    *voices_ptr = voices.as_mut_ptr();
-    std::mem::forget(voices);
-    Ok(())
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      check_output_pointer(&voices_ptr.cast())?;
+      check_output_pointer(&voices_len.cast())?;
+      let synthesizer = optional_c_string_to_rust(&synthesizer);
+      let name = optional_c_string_to_rust(&name);
+      let language = optional_c_string_to_rust(&language);
+      let voices: Vec<*mut WhisprsVoice> = whisprs
+        .list_voices(synthesizer, name, language, needs_audio_data)?
+        .into_iter()
+        .map(|voice| Box::into_raw(Box::new(voice.into())))
+        .collect();
+      *voices_len = voices.len();
+      let mut voices = voices.into_boxed_slice();
+      *voices_ptr = voices.as_mut_ptr();
+      std::mem::forget(voices);
+      Ok(())
+    }
   };
   handle_error_if_needed(closure())
 }
@@ -283,9 +294,11 @@ pub unsafe extern "C" fn whisprs_free_voice_list(
   voices_len: usize,
 ) {
   if !voices.is_null() {
-    let voices = std::slice::from_raw_parts_mut(voices, voices_len);
-    let voices = Box::from_raw(std::ptr::from_mut::<[*mut WhisprsVoice]>(voices));
-    let _voices: Vec<Box<WhisprsVoice>> = voices.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+    unsafe {
+      let voices = std::slice::from_raw_parts_mut(voices, voices_len);
+      let voices = Box::from_raw(std::ptr::from_mut::<[*mut WhisprsVoice]>(voices));
+      let _voices: Vec<Box<WhisprsVoice>> = voices.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+    }
   }
 }
 #[unsafe(no_mangle)]
@@ -294,20 +307,22 @@ pub unsafe extern "C" fn whisprs_list_speech_synthesizers(
   synthesizers_ptr: *mut *mut *mut WhisprsSpeechSynthesizerMetadata,
   synthesizers_len: *mut usize,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    check_output_pointer(&synthesizers_ptr.cast())?;
-    check_output_pointer(&synthesizers_len.cast())?;
-    let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> = whisprs
-      .list_speech_synthesizers()?
-      .into_iter()
-      .map(|synthesizer| Box::into_raw(Box::new(synthesizer.into())))
-      .collect();
-    *synthesizers_len = synthesizers.len();
-    let mut synthesizers = synthesizers.into_boxed_slice();
-    *synthesizers_ptr = synthesizers.as_mut_ptr();
-    std::mem::forget(synthesizers);
-    Ok(())
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      check_output_pointer(&synthesizers_ptr.cast())?;
+      check_output_pointer(&synthesizers_len.cast())?;
+      let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> = whisprs
+        .list_speech_synthesizers()?
+        .into_iter()
+        .map(|synthesizer| Box::into_raw(Box::new(synthesizer.into())))
+        .collect();
+      *synthesizers_len = synthesizers.len();
+      let mut synthesizers = synthesizers.into_boxed_slice();
+      *synthesizers_ptr = synthesizers.as_mut_ptr();
+      std::mem::forget(synthesizers);
+      Ok(())
+    }
   };
   handle_error_if_needed(closure())
 }
@@ -317,20 +332,22 @@ pub unsafe extern "C" fn whisprs_list_speech_synthesizers_supporting_audio_data(
   synthesizers_ptr: *mut *mut *mut WhisprsSpeechSynthesizerMetadata,
   synthesizers_len: *mut usize,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    check_output_pointer(&synthesizers_ptr.cast())?;
-    check_output_pointer(&synthesizers_len.cast())?;
-    let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> = whisprs
-      .list_speech_synthesizers_supporting_audio_data()?
-      .into_iter()
-      .map(|synthesizer| Box::into_raw(Box::new(synthesizer.into())))
-      .collect();
-    *synthesizers_len = synthesizers.len();
-    let mut synthesizers = synthesizers.into_boxed_slice();
-    *synthesizers_ptr = synthesizers.as_mut_ptr();
-    std::mem::forget(synthesizers);
-    Ok(())
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      check_output_pointer(&synthesizers_ptr.cast())?;
+      check_output_pointer(&synthesizers_len.cast())?;
+      let synthesizers: Vec<*mut WhisprsSpeechSynthesizerMetadata> = whisprs
+        .list_speech_synthesizers_supporting_audio_data()?
+        .into_iter()
+        .map(|synthesizer| Box::into_raw(Box::new(synthesizer.into())))
+        .collect();
+      *synthesizers_len = synthesizers.len();
+      let mut synthesizers = synthesizers.into_boxed_slice();
+      *synthesizers_ptr = synthesizers.as_mut_ptr();
+      std::mem::forget(synthesizers);
+      Ok(())
+    }
   };
   handle_error_if_needed(closure())
 }
@@ -340,11 +357,13 @@ pub unsafe extern "C" fn whisprs_free_speech_synthesizer_list(
   synthesizers_len: usize,
 ) {
   if !synthesizers.is_null() {
-    let synthesizers = std::slice::from_raw_parts_mut(synthesizers, synthesizers_len);
-    let synthesizers =
-      Box::from_raw(std::ptr::from_mut::<[*mut WhisprsSpeechSynthesizerMetadata]>(synthesizers));
-    let _synthesizers: Vec<Box<WhisprsSpeechSynthesizerMetadata>> =
-      synthesizers.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+    unsafe {
+      let synthesizers = std::slice::from_raw_parts_mut(synthesizers, synthesizers_len);
+      let synthesizers =
+        Box::from_raw(std::ptr::from_mut::<[*mut WhisprsSpeechSynthesizerMetadata]>(synthesizers));
+      let _synthesizers: Vec<Box<WhisprsSpeechSynthesizerMetadata>> =
+        synthesizers.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+    }
   }
 }
 #[unsafe(no_mangle)]
@@ -353,20 +372,22 @@ pub unsafe extern "C" fn whisprs_list_braille_backends(
   backends_ptr: *mut *mut *mut WhisprsBrailleBackendMetadata,
   backends_len: *mut usize,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    check_output_pointer(&backends_ptr.cast())?;
-    check_output_pointer(&backends_len.cast())?;
-    let backends: Vec<*mut WhisprsBrailleBackendMetadata> = whisprs
-      .list_braille_backends()?
-      .into_iter()
-      .map(|backend| Box::into_raw(Box::new(backend.into())))
-      .collect();
-    *backends_len = backends.len();
-    let mut backends = backends.into_boxed_slice();
-    *backends_ptr = backends.as_mut_ptr();
-    std::mem::forget(backends);
-    Ok(())
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      check_output_pointer(&backends_ptr.cast())?;
+      check_output_pointer(&backends_len.cast())?;
+      let backends: Vec<*mut WhisprsBrailleBackendMetadata> = whisprs
+        .list_braille_backends()?
+        .into_iter()
+        .map(|backend| Box::into_raw(Box::new(backend.into())))
+        .collect();
+      *backends_len = backends.len();
+      let mut backends = backends.into_boxed_slice();
+      *backends_ptr = backends.as_mut_ptr();
+      std::mem::forget(backends);
+      Ok(())
+    }
   };
   handle_error_if_needed(closure())
 }
@@ -376,12 +397,14 @@ pub unsafe extern "C" fn whisprs_free_braille_backend_list(
   backends_len: usize,
 ) {
   if !backends.is_null() {
-    let backends = std::slice::from_raw_parts_mut(backends, backends_len);
-    let backends = Box::from_raw(std::ptr::from_mut::<[*mut WhisprsBrailleBackendMetadata]>(
-      backends,
-    ));
-    let _backends: Vec<Box<WhisprsBrailleBackendMetadata>> =
-      backends.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+    unsafe {
+      let backends = std::slice::from_raw_parts_mut(backends, backends_len);
+      let backends = Box::from_raw(std::ptr::from_mut::<[*mut WhisprsBrailleBackendMetadata]>(
+        backends,
+      ));
+      let _backends: Vec<Box<WhisprsBrailleBackendMetadata>> =
+        backends.iter().map(|ptr| Box::from_raw(*ptr)).collect();
+    }
   }
 }
 #[unsafe(no_mangle)]
@@ -396,27 +419,31 @@ pub unsafe extern "C" fn whisprs_speak_to_audio_data(
   text: *const c_char,
   result_ptr: *mut *mut WhisprsSpeechResult,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    check_output_pointer(&result_ptr.cast())?;
-    let synthesizer = optional_c_string_to_rust(&synthesizer);
-    let voice = optional_c_string_to_rust(&voice);
-    let language = optional_c_string_to_rust(&language);
-    let rate = optional_c_byte_to_rust(&rate);
-    let volume = optional_c_byte_to_rust(&volume);
-    let pitch = optional_c_byte_to_rust(&pitch);
-    let text = c_string_to_rust(&text)?;
-    let result =
-      whisprs.speak_to_audio_data(synthesizer, voice, language, rate, volume, pitch, text)?;
-    *result_ptr = Box::into_raw(Box::new(result.into()));
-    Ok(())
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      check_output_pointer(&result_ptr.cast())?;
+      let synthesizer = optional_c_string_to_rust(&synthesizer);
+      let voice = optional_c_string_to_rust(&voice);
+      let language = optional_c_string_to_rust(&language);
+      let rate = optional_c_byte_to_rust(&rate);
+      let volume = optional_c_byte_to_rust(&volume);
+      let pitch = optional_c_byte_to_rust(&pitch);
+      let text = c_string_to_rust(&text)?;
+      let result =
+        whisprs.speak_to_audio_data(synthesizer, voice, language, rate, volume, pitch, text)?;
+      *result_ptr = Box::into_raw(Box::new(result.into()));
+      Ok(())
+    }
   };
   handle_error_if_needed(closure())
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn whisprs_free_speech_result(result: *mut WhisprsSpeechResult) {
   if !result.is_null() {
-    let _result = Box::from_raw(result);
+    unsafe {
+      let _result = Box::from_raw(result);
+    }
   }
 }
 #[unsafe(no_mangle)]
@@ -431,25 +458,27 @@ pub unsafe extern "C" fn whisprs_speak_to_audio_output(
   text: *const c_char,
   interrupt: bool,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    let synthesizer = optional_c_string_to_rust(&synthesizer);
-    let voice = optional_c_string_to_rust(&voice);
-    let language = optional_c_string_to_rust(&language);
-    let rate = optional_c_byte_to_rust(&rate);
-    let volume = optional_c_byte_to_rust(&volume);
-    let pitch = optional_c_byte_to_rust(&pitch);
-    let text = c_string_to_rust(&text)?;
-    whisprs.speak_to_audio_output(
-      synthesizer,
-      voice,
-      language,
-      rate,
-      volume,
-      pitch,
-      text,
-      interrupt,
-    )
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      let synthesizer = optional_c_string_to_rust(&synthesizer);
+      let voice = optional_c_string_to_rust(&voice);
+      let language = optional_c_string_to_rust(&language);
+      let rate = optional_c_byte_to_rust(&rate);
+      let volume = optional_c_byte_to_rust(&volume);
+      let pitch = optional_c_byte_to_rust(&pitch);
+      let text = c_string_to_rust(&text)?;
+      whisprs.speak_to_audio_output(
+        synthesizer,
+        voice,
+        language,
+        rate,
+        volume,
+        pitch,
+        text,
+        interrupt,
+      )
+    }
   };
   handle_error_if_needed(closure())
 }
@@ -458,10 +487,12 @@ pub unsafe extern "C" fn whisprs_stop_speech(
   handle: *mut Whisprs,
   synthesizer: *const c_char,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    let synthesizer = optional_c_string_to_rust(&synthesizer);
-    whisprs.stop_speech(synthesizer)
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      let synthesizer = optional_c_string_to_rust(&synthesizer);
+      whisprs.stop_speech(synthesizer)
+    }
   };
   handle_error_if_needed(closure())
 }
@@ -471,11 +502,13 @@ pub unsafe extern "C" fn whisprs_braille(
   backend: *const c_char,
   text: *const c_char,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    let backend = optional_c_string_to_rust(&backend);
-    let text = c_string_to_rust(&text)?;
-    whisprs.braille(backend, text)
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      let backend = optional_c_string_to_rust(&backend);
+      let text = c_string_to_rust(&text)?;
+      whisprs.braille(backend, text)
+    }
   };
   handle_error_if_needed(closure())
 }
@@ -492,27 +525,29 @@ pub unsafe extern "C" fn whisprs_output(
   text: *const c_char,
   interrupt: bool,
 ) -> WhisprsOutputError {
-  let closure = || {
-    let whisprs = handle_to_rust(handle)?;
-    let synthesizer = optional_c_string_to_rust(&synthesizer);
-    let voice = optional_c_string_to_rust(&voice);
-    let language = optional_c_string_to_rust(&language);
-    let rate = optional_c_byte_to_rust(&rate);
-    let volume = optional_c_byte_to_rust(&volume);
-    let pitch = optional_c_byte_to_rust(&pitch);
-    let braille_backend = optional_c_string_to_rust(&braille_backend);
-    let text = c_string_to_rust(&text)?;
-    whisprs.output(
-      synthesizer,
-      voice,
-      language,
-      rate,
-      volume,
-      pitch,
-      braille_backend,
-      text,
-      interrupt,
-    )
+  let closure = || -> Result<(), OutputError> {
+    unsafe {
+      let whisprs = handle_to_rust(handle)?;
+      let synthesizer = optional_c_string_to_rust(&synthesizer);
+      let voice = optional_c_string_to_rust(&voice);
+      let language = optional_c_string_to_rust(&language);
+      let rate = optional_c_byte_to_rust(&rate);
+      let volume = optional_c_byte_to_rust(&volume);
+      let pitch = optional_c_byte_to_rust(&pitch);
+      let braille_backend = optional_c_string_to_rust(&braille_backend);
+      let text = c_string_to_rust(&text)?;
+      whisprs.output(
+        synthesizer,
+        voice,
+        language,
+        rate,
+        volume,
+        pitch,
+        braille_backend,
+        text,
+        interrupt,
+      )
+    }
   };
   handle_error_if_needed(closure())
 }
