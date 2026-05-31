@@ -21,7 +21,7 @@ jobs:
             original-output-file: libwhisp_rs.so
             output-file: libwhisp_rs_${{ github.ref_name }}_aarch64.so
           - os-name: windows-x86_64
-            runs-on: windows-2025-vs-2026
+            runs-on: windows-2025-vs2026
             target: x86_64-pc-windows-msvc
             arch: x64
             original-output-file: whisp_rs.dll
