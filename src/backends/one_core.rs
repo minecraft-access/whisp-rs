@@ -131,7 +131,7 @@ impl SpeechSynthesizerToAudioData for OneCore {
           err,
         )
       })?;
-    let stream = result.get().map_err(|err| {
+    let stream = result.join().map_err(|err| {
       OutputError::into_speak_failed(
         &self.name(),
         voice_name.unwrap_or(language.unwrap_or("default")),
@@ -149,7 +149,7 @@ impl SpeechSynthesizerToAudioData for OneCore {
         InputStreamOptions::None,
       )
       .map_err(OutputError::into_unknown)?
-      .get()
+      .join()
       .map_err(OutputError::into_unknown)?;
     let memory_buffer =
       Buffer::CreateMemoryBufferOverIBuffer(&buffer).map_err(OutputError::into_unknown)?;
@@ -174,11 +174,11 @@ impl SpeechSynthesizerToAudioData for OneCore {
     };
     let data_stream = Cursor::new(data);
     let decoder = Decoder::new(data_stream).map_err(OutputError::into_unknown)?;
-    let sample_rate = decoder.sample_rate();
-    let pcm = decoder.flat_map(i16::to_le_bytes).collect::<Vec<u8>>();
+    let sample_rate = decoder.sample_rate().get();
+    let pcm = decoder.flat_map(f32::to_le_bytes).collect::<Vec<u8>>();
     Ok(SpeechResult {
       pcm,
-      sample_format: SampleFormat::S16,
+      sample_format: SampleFormat::F32,
       sample_rate,
     })
   }

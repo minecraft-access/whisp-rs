@@ -6,7 +6,7 @@ mod c_api;
 pub mod error;
 mod jni;
 pub mod metadata;
-use crate::audio::SpeechResult;
+use crate::audio::{SampleFormat, SpeechResult};
 #[cfg(target_os = "macos")]
 use crate::backends::av_speech_synthesizer::AvSpeechSynthesizer;
 use crate::backends::espeak_ng::EspeakNg;
@@ -52,11 +52,20 @@ fn stop_audio() -> Result<(), OutputError> {
   })
 }
 fn play_audio(result: &SpeechResult) -> Result<(), OutputError> {
-  let samples = result
-    .pcm
-    .chunks_exact(2)
-    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]));
-  let samples = SampleTypeConverter::new(samples).collect::<Vec<f32>>();
+  let samples = match result.sample_format {
+    SampleFormat::S16 => {
+      let samples = result
+        .pcm
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]));
+      SampleTypeConverter::new(samples).collect::<Vec<f32>>()
+    }
+    SampleFormat::F32 => result
+      .pcm
+      .chunks_exact(4)
+      .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+      .collect::<Vec<f32>>(),
+  };
   let source = SamplesBuffer::new(nz!(1), NonZero::new(result.sample_rate).unwrap(), samples);
   PLAYER.with(|cell| {
     cell

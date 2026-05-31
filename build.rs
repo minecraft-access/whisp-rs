@@ -34,6 +34,8 @@ fn main() {
     println!("cargo::rustc-link-search=native={}", output_dir);
     println!("cargo::rustc-link-lib=static=nvda_controller");
     println!("cargo::rustc-link-lib=rpcrt4");
+    println!("cargo::rustc-link-lib=user32");
+    println!("cargo::rustc-link-lib=advapi32");
     let nvda_bindings = bindgen::Builder::default()
       .header(
         Path::new("nvda_controller")
