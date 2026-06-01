@@ -3,7 +3,7 @@ package org.mcaccess.whisprs.audio;
 import org.jetbrains.annotations.NotNull;
 
 public class SpeechResult {
-  enum SampleFormat {
+  public enum SampleFormat {
     S16, F32
   }
   public final @NotNull byte[] pcm;
