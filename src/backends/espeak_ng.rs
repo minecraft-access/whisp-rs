@@ -39,7 +39,7 @@ pub fn set_data_path(path: String) {
 fn handle_espeak_error(error: espeak_ERROR) -> Result<(), anyhow::Error> {
   match error {
     espeak_ERROR_EE_OK => Ok(()),
-    error => Err(anyhow!("eSpeak NG error: {}", error)),
+    error => Err(anyhow!("eSpeak NG error: {error}")),
   }
 }
 pub struct EspeakNg {
@@ -106,7 +106,7 @@ impl Backend for EspeakNg {
       score: 0,
       spare: std::ptr::null_mut(),
     };
-    let voices_ptr = unsafe { espeak_ListVoices(&mut voice_spec) };
+    let voices_ptr = unsafe { espeak_ListVoices(&raw mut voice_spec) };
     let mut voices_ptr_copy = voices_ptr;
     let mut count: usize = 0;
     while unsafe { !(*voices_ptr_copy).is_null() } {
@@ -243,7 +243,7 @@ impl SpeechSynthesizerToAudioData for EspeakNg {
           score: 0,
           spare: std::ptr::null_mut(),
         };
-        handle_espeak_error(unsafe { espeak_SetVoiceByProperties(&mut voice_spec) })
+        handle_espeak_error(unsafe { espeak_SetVoiceByProperties(&raw mut voice_spec) })
           .map_err(|_| OutputError::into_language_not_found(language))?;
       }
     }

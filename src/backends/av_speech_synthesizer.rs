@@ -144,50 +144,51 @@ impl SpeechSynthesizerToAudioData for AvSpeechSynthesizer {
       let done_tx2 = done_tx.clone();
       let callback = RcBlock::new(move |buffer: NonNull<AVAudioBuffer>| {
         let send_done = |result: Result<(), OutputError>| {
-          if let Ok(mut guard) = done_tx2.lock() {
-            if let Some(tx) = guard.take() {
-              let _ = tx.send(result);
-            }
+          if let Ok(mut guard) = done_tx2.lock()
+            && let Some(tx) = guard.take()
+          {
+            let _ = tx.send(result);
           }
         };
-        let result: Result<bool, OutputError> = (|| {
-          let buffer = buffer.as_ref().downcast_ref::<AVAudioPCMBuffer>().ok_or(
-            OutputError::into_unknown(anyhow!("AVSpeechSynthesizer did not return a PCM buffer")),
-          )?;
-          let format = buffer.format();
-          let sample_format = match format.commonFormat() {
-            AVAudioCommonFormat::PCMFormatFloat32 => SampleFormat::F32,
-            AVAudioCommonFormat::PCMFormatInt16 => SampleFormat::S16,
-            _ => Err(OutputError::into_unknown(anyhow!(
-              "Invalid audio format from AVSpeechSynthesizer"
-            )))?,
-          };
-          let frame_length = buffer.frameLength();
-          if frame_length > 0 {
-            let _ = sample_format2.set(sample_format.clone());
-            let _ = sample_rate2.set(format.sampleRate() as u32);
-            let sample_size = match sample_format {
-              SampleFormat::F32 => 4,
-              SampleFormat::S16 => 2,
+        let result: Result<bool, OutputError> =
+          (|| {
+            let buffer = buffer.as_ref().downcast_ref::<AVAudioPCMBuffer>().ok_or(
+              OutputError::into_unknown(anyhow!("AVSpeechSynthesizer did not return a PCM buffer")),
+            )?;
+            let format = buffer.format();
+            let sample_format = match format.commonFormat() {
+              AVAudioCommonFormat::PCMFormatFloat32 => SampleFormat::F32,
+              AVAudioCommonFormat::PCMFormatInt16 => SampleFormat::S16,
+              _ => Err(OutputError::into_unknown(anyhow!(
+                "Invalid audio format from AVSpeechSynthesizer"
+              )))?,
             };
-            let mut data = match sample_format {
-              SampleFormat::F32 => (*buffer.floatChannelData()).as_ptr() as *const u8,
-              SampleFormat::S16 => (*buffer.int16ChannelData()).as_ptr() as *const u8,
-            };
-            let stride = buffer.stride() * sample_size;
-            let mut pcm2 = pcm2
-              .write()
-              .map_err(|_| OutputError::into_unknown(anyhow!("Failed to write PCM vector")))?;
-            for _ in 0..frame_length - 1 {
-              let mut sample = std::slice::from_raw_parts(data, sample_size).to_vec();
-              pcm2.append(&mut sample);
-              data = data.add(stride);
+            let frame_length = buffer.frameLength();
+            if frame_length > 0 {
+              let _ = sample_format2.set(sample_format.clone());
+              let _ = sample_rate2.set(format.sampleRate() as u32);
+              let sample_size = match sample_format {
+                SampleFormat::F32 => 4,
+                SampleFormat::S16 => 2,
+              };
+              let mut data = match sample_format {
+                SampleFormat::F32 => (*buffer.floatChannelData()).as_ptr() as *const u8,
+                SampleFormat::S16 => (*buffer.int16ChannelData()).as_ptr() as *const u8,
+              };
+              let stride = buffer.stride() * sample_size;
+              let mut pcm2 = pcm2
+                .write()
+                .map_err(|_| OutputError::into_unknown(anyhow!("Failed to write PCM vector")))?;
+              for _ in 0..frame_length - 1 {
+                let mut sample = std::slice::from_raw_parts(data, sample_size).to_vec();
+                pcm2.append(&mut sample);
+                data = data.add(stride);
+              }
+              Ok(false)
+            } else {
+              Ok(true)
             }
-            Ok(false)
-          } else {
-            Ok(true)
-          }
-        })();
+          })();
         match result {
           Ok(false) => {}
           Ok(true) => send_done(Ok(())),
