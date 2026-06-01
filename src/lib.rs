@@ -501,8 +501,10 @@ impl Whisprs {
       (Err(OutputError::NoVoices), Err(OutputError::NoBrailleBackends)) => {
         Err(OutputError::NoBackends)
       }
-      (Err(OutputError::NoVoices) | Ok(()), right) => right,
-      (left, _) => left,
+      (Err(OutputError::NoVoices), right) => right,
+      (left, Err(OutputError::NoBrailleBackends)) => left,
+      (Err(error), _) => Err(error),
+      (Ok(()), right) => right,
     }
   }
 }
