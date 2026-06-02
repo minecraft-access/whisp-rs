@@ -37,7 +37,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 thread_local! {
   static BACKENDS: RefCell<HashMap<String, Box<dyn Backend>>> = RefCell::new(HashMap::new());
-  static MIXER_DEVICE_SINK: OnceCell<MixerDeviceSink> = const {OnceCell::new() };
+  static MIXER_DEVICE_SINK: RefCell<Option<MixerDeviceSink>> = const { RefCell::new(None) };
   static PLAYER: OnceCell<Player> = const { OnceCell::new() };
 }
 fn stop_audio() -> Result<(), OutputError> {
@@ -97,7 +97,7 @@ impl Whisprs {
         let mixer_device_sink =
           DeviceSinkBuilder::open_default_sink().map_err(OutputError::into_initialize_failed)?;
         let player = Player::connect_new(mixer_device_sink.mixer());
-        let _result = MIXER_DEVICE_SINK.with(|cell| cell.set(mixer_device_sink));
+        MIXER_DEVICE_SINK.with_borrow_mut(|cell| *cell = Some(mixer_device_sink));
         let _result = PLAYER.with(|cell| cell.set(player));
         let mut backends: Vec<Result<Box<dyn Backend>, OutputError>> = Vec::new();
         backends.push(EspeakNg::new().map(|value| Box::new(value) as Box<dyn Backend>));
@@ -130,9 +130,10 @@ impl Whisprs {
       for (operation, sender) in operation_rx {
         sender.send(operation()).unwrap();
         if thread_should_stop.load(Ordering::Relaxed) {
-          return;
+          break;
         }
       }
+      MIXER_DEVICE_SINK.with_borrow_mut(Option::take);
     });
     result_rx
       .recv()
