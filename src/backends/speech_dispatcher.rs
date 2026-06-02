@@ -214,7 +214,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
       })?;
     if interrupt {
       client
-        .cancel(MessageScope::Last)
+        .cancel(MessageScope::All)
         .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
         .check_status(OK_CANCELED)
         .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
@@ -262,7 +262,7 @@ impl SpeechSynthesizerToAudioOutput for SpeechDispatcher {
     self
       .client
       .borrow_mut()
-      .cancel(MessageScope::Last)
+      .cancel(MessageScope::All)
       .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?
       .check_status(OK_CANCELED)
       .map_err(|err| OutputError::into_stop_speech_failed(&self.name(), err))?;
